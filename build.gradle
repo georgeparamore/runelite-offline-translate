@@ -1,0 +1,58 @@
+plugins {
+    id 'java'
+}
+
+def runeLiteVersion = 'latest.release'
+def djlVersion = '0.33.0'
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    maven {
+        url = 'https://repo.runelite.net'
+    }
+}
+
+dependencies {
+    compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
+    compileOnly group: 'org.projectlombok', name: 'lombok', version: '1.18.30'
+
+    annotationProcessor group: 'org.projectlombok', name: 'lombok', version: '1.18.30'
+
+    // Local (offline) translation inference - runs OPUS-MT ONNX models entirely on-device.
+    // Raw ONNX Runtime is used directly (rather than DJL's Predictor/Translator abstraction)
+    // because the merged encoder/decoder graphs need manual, named, multi-tensor KV-cache
+    // wiring across generation steps that doesn't fit DJL's single-pass NDList model well.
+    implementation group: 'ai.djl', name: 'api', version: djlVersion
+    implementation group: 'ai.djl.sentencepiece', name: 'sentencepiece', version: djlVersion
+    implementation group: 'com.microsoft.onnxruntime', name: 'onnxruntime', version: '1.22.0'
+
+    // Offline language detection (n-gram based, no network/model download required).
+    implementation group: 'com.optimaize.languagedetector', name: 'language-detector', version: '0.6'
+
+    testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
+    testImplementation group: 'junit', name: 'junit', version: '4.13.2'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+group = 'com.offlinetranslate'
+version = '0.1.0'
+
+List<String> runeliteJvmArgs = ['-ea']
+if (org.gradle.internal.os.OperatingSystem.current().isMacOsX())
+{
+    runeliteJvmArgs += ['--add-exports', 'java.desktop/com.apple.eawt=ALL-UNNAMED']
+}
+
+tasks.register('runOfflineTranslate', JavaExec) {
+    group = 'runelite'
+    description = 'Launches RuneLite locally with the Offline Translate plugin registered.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.offlinetranslate.OfflineTranslatePluginTest'
+    standardInput = System.in
+    jvmArgs runeliteJvmArgs
+}
