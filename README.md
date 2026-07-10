@@ -133,6 +133,15 @@ couldn't be tested without a real client.
 
 ## Language pack coverage
 
+Deliberately Latin-script only - see the note at the top of `Language.java` for why. The OSRS
+client's own chat font has no glyphs for non-Latin scripts (confirmed live: a correctly
+translated Arabic message rendered as `?` in the actual game chat, even though the translation
+itself was exactly right), so Chinese, Japanese, Korean, Arabic, Hindi, Russian, and Ukrainian
+were left out rather than shipping languages that can only ever show as boxes in the one place
+this plugin mainly exists for. They'd still render fine in the side panel log specifically
+(that's Java-rendered text, unaffected by the game's font) - the removal is about the in-game
+chat use case, not translation quality.
+
 Every pack is English-paired (translating between two non-English languages pivots through
 English). Not every language has a model in both directions - this reflects real gaps in the
 upstream [Helsinki-NLP OPUS-MT](https://huggingface.co/Helsinki-NLP) models, not an
@@ -140,9 +149,11 @@ implementation limitation:
 
 | Language | Incoming (→ English) | Outgoing (English →) |
 |---|---|---|
-| Spanish, French, German, Italian, Dutch, Russian, Chinese, Arabic, Swedish, Finnish, Danish, Czech, Hindi, Vietnamese, Ukrainian, Indonesian, Hungarian, Afrikaans | ✅ | ✅ |
-| Japanese | ✅ | ✅ (different upstream model family than the incoming direction) |
-| Korean, Polish | ✅ | ❌ (no English→ model published upstream) |
+| Spanish, French, German, Italian, Dutch, Swedish, Finnish, Danish, Czech, Vietnamese, Indonesian, Hungarian, Afrikaans | ✅ | ✅ |
+| Polish | ✅ | ❌ (no English→ model published upstream) |
+
+Vietnamese is Latin-script but diacritic-heavy (tone marks) - more likely than the others here
+to include characters outside the client font's coverage. Left in, but untested either way.
 
 Portuguese and Turkish are not included in v1 - Portuguese has no Xenova ONNX conversion
 published at all, and the only available Turkish model is a differently-structured "big"

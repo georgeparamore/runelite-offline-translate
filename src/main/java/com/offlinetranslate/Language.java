@@ -4,9 +4,19 @@ package com.offlinetranslate;
  * Supported languages and the Xenova ONNX-converted OPUS-MT model repos backing them.
  * <p>
  * Model availability is asymmetric in upstream Helsinki-NLP/OPUS-MT: some languages only have
- * a to-English model (no English back-translation model exists), and Japanese uses a different
- * source-language code ("jap") for the English-to-Japanese direction than the to-English
- * direction ("ja") - that's not a typo, it reflects the actual upstream repo names.
+ * a to-English model (no English back-translation model exists).
+ * <p>
+ * Deliberately Latin-script only. The OSRS client's own chat font only has glyphs for English
+ * plus accented European characters (é, ñ, ü, and similar) - confirmed live: a correctly
+ * translated Arabic message ("hi" -> "مرحباً", verified correct in the console) still rendered
+ * as "?" in the actual game chat, because the game engine itself has no glyphs to draw it with,
+ * not because of anything wrong with the translation. That's true for any script the client's
+ * font doesn't cover, for both sending and receiving, regardless of which client/player is
+ * involved - so Chinese, Japanese, Korean, Arabic, Hindi, Russian, and Ukrainian were removed
+ * rather than shipping languages that can only ever show as boxes in the one place (the actual
+ * chatbox) most of this plugin exists for. They'd still work fine in the side panel log, which
+ * is Java-rendered text and unaffected by the game's font - the removal is specifically about
+ * not offering languages that are broken for the in-game chat use case.
  */
 public enum Language
 {
@@ -17,19 +27,14 @@ public enum Language
 	GERMAN("de", "German", "🇩🇪", "de", "de"),
 	ITALIAN("it", "Italian", "🇮🇹", "it", "it"),
 	DUTCH("nl", "Dutch", "🇳🇱", "nl", "nl"),
-	RUSSIAN("ru", "Russian", "🇷🇺", "ru", "ru"),
-	CHINESE("zh", "Chinese", "🇨🇳", "zh", "zh"),
-	ARABIC("ar", "Arabic", "🇸🇦", "ar", "ar"),
-	JAPANESE("ja", "Japanese", "🇯🇵", "ja", "jap"),
-	KOREAN("ko", "Korean", "🇰🇷", "ko", null),
 	POLISH("pl", "Polish", "🇵🇱", "pl", null),
 	SWEDISH("sv", "Swedish", "🇸🇪", "sv", "sv"),
 	FINNISH("fi", "Finnish", "🇫🇮", "fi", "fi"),
 	DANISH("da", "Danish", "🇩🇰", "da", "da"),
 	CZECH("cs", "Czech", "🇨🇿", "cs", "cs"),
-	HINDI("hi", "Hindi", "🇮🇳", "hi", "hi"),
+	// Latin-script but diacritic-heavy (tone marks) - kept in, but more likely than the others
+	// here to hit characters outside the client font's coverage. Untested either way.
 	VIETNAMESE("vi", "Vietnamese", "🇻🇳", "vi", "vi"),
-	UKRAINIAN("uk", "Ukrainian", "🇺🇦", "uk", "uk"),
 	INDONESIAN("id", "Indonesian", "🇮🇩", "id", "id"),
 	HUNGARIAN("hu", "Hungarian", "🇭🇺", "hu", "hu"),
 	AFRIKAANS("af", "Afrikaans", "🇿🇦", "af", "af");
