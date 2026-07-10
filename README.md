@@ -290,6 +290,18 @@ issues are the most likely thing to show up if you add a new language or swap mo
     auto-generated config screen (outside this plugin's control, and using its own default combo
     box renderer that calls `toString()`) - this plugin's own panel never relied on `toString()`
     for display, so removing the emoji there costs it nothing.
+25. **Pack rows had an unwanted horizontal scrollbar** - `LanguagePackRowPanel`'s buttons row and
+    progress bar had a fixed pixel width (`PluginPanel.PANEL_WIDTH - 30`) that didn't account for
+    the row's own nested `JScrollPane` also taking a vertical scrollbar's worth of width away
+    from what was actually available - confirmed live, the fixed guess was simply wider than the
+    real space. Switched both to stretch dynamically (`Integer.MAX_VALUE` max width) instead of
+    assuming a number computed once still holds several containers later. Rows also shrunk per
+    request (smaller font/flag/padding/button margins), and the English flag was redrawn - the
+    old plain horizontal blue/white/red bands didn't read as "UK" and was easily confused with
+    Dutch's near-identical bands in reverse order. A first attempt added diagonal lines for a
+    proper Union Jack look, but at icon size those anti-aliased into illegible pixel mush
+    (checked by rendering it) - settled on a centered white-then-red cross on navy instead,
+    distinct from both the tricolors and the off-center Nordic-cross flags.
 
 **Not yet verified - confirm on your own client:**
 - The redesigned translate hotkey now that channel-prefix preservation and incoming detection
