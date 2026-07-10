@@ -121,7 +121,7 @@ public final class FlagIconFactory
 				break;
 			case ENGLISH:
 			default:
-				horizontalBands(g, width, height, BLUE, WHITE, RED);
+				unionJack(g, width, height);
 				break;
 		}
 	}
@@ -203,5 +203,31 @@ public final class FlagIconFactory
 		g.setColor(mark);
 		int size = Math.max(2, Math.min(width, height) / 3);
 		g.fillOval(Math.max(1, width / 4 - size / 2), Math.max(1, height / 4 - size / 2), size, size);
+	}
+
+	/**
+	 * Simplified Union Jack: navy field with a centered white cross, a narrower red cross on top
+	 * - reads as "the UK flag" at a glance, unlike the plain horizontal tricolor this used before
+	 * (confirmed live: looked like an arbitrary/wrong flag, easily confused with Dutch's very
+	 * similar horizontal red/white/blue bands just reordered). A first attempt added diagonal
+	 * lines for the full Union Jack look, but at 11x8-20x14px those anti-aliased into illegible
+	 * pixel mush rather than a recognizable diagonal (confirmed live) - centered, not offset like
+	 * the Nordic-cross flags, is enough to read as "not Sweden/Finland/Denmark" without needing
+	 * diagonals a canvas this small can't actually render cleanly.
+	 */
+	private static void unionJack(Graphics2D g, int width, int height)
+	{
+		g.setColor(BLUE);
+		g.fillRect(0, 0, width, height);
+
+		int barThickness = Math.max(2, Math.round(height / 2.6f));
+		g.setColor(WHITE);
+		g.fillRect(0, height / 2 - barThickness / 2, width, barThickness);
+		g.fillRect(width / 2 - barThickness / 2, 0, barThickness, height);
+
+		int redThickness = Math.max(1, barThickness / 2);
+		g.setColor(RED);
+		g.fillRect(0, height / 2 - redThickness / 2, width, redThickness);
+		g.fillRect(width / 2 - redThickness / 2, 0, redThickness, height);
 	}
 }

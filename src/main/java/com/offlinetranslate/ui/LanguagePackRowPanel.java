@@ -25,7 +25,6 @@ import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.SwingUtilities;
 import net.runelite.client.ui.FontManager;
-import net.runelite.client.ui.PluginPanel;
 
 /**
  * One row in the language pack manager, as a rounded card: a language, a single "Download"
@@ -37,8 +36,6 @@ import net.runelite.client.ui.PluginPanel;
  */
 class LanguagePackRowPanel extends RoundedPanel
 {
-	private static final int ROW_WIDTH = PluginPanel.PANEL_WIDTH - 30;
-
 	private final ModelManager modelManager;
 	private final TranslationEngine translationEngine;
 	private final Language language;
@@ -58,7 +55,7 @@ class LanguagePackRowPanel extends RoundedPanel
 		this.notifier = notifier;
 
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
-		setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+		setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
 		setAlignmentX(Component.LEFT_ALIGNMENT);
 		// No explicit setMaximumSize() here - this row's downstream BoxLayout.maximumLayoutSize()
 		// sums its (as-yet-nonexistent) children's max sizes as of *this* line, which is exactly
@@ -75,19 +72,27 @@ class LanguagePackRowPanel extends RoundedPanel
 		// leftover space), there was never a real need to cap it at all.
 
 		JLabel nameLabel = new JLabel(language.getDisplayName());
-		nameLabel.setIcon(new ImageIcon(FlagIconFactory.create(language, 16, 11)));
+		nameLabel.setIcon(new ImageIcon(FlagIconFactory.create(language, 14, 10)));
 		nameLabel.setIconTextGap(6);
-		nameLabel.setFont(FontManager.getRunescapeBoldFont());
+		nameLabel.setFont(FontManager.getRunescapeSmallFont().deriveFont(java.awt.Font.BOLD));
 		nameLabel.setForeground(PanelColors.TEXT);
 		nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		add(nameLabel);
 
-		add(javax.swing.Box.createVerticalStrut(6));
+		add(javax.swing.Box.createVerticalStrut(4));
 
+		// No fixed pixel width here (an earlier version used PluginPanel.PANEL_WIDTH - 30, a
+		// guess that didn't account for this row's *own* nested JScrollPane also taking a
+		// vertical scrollbar's worth of width away from what's actually available) - Integer.
+		// MAX_VALUE lets these stretch to whatever width the row itself ends up with, which is
+		// however much is actually left after every ancestor's own scrollbar/border/padding, not
+		// a number computed once and assumed to still be right several containers later.
+		// Confirmed live: the fixed-width version was wider than the real available space,
+		// forcing an unwanted horizontal scrollbar.
 		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
 		buttons.setOpaque(false);
 		buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
-		buttons.setMaximumSize(new Dimension(ROW_WIDTH, 30));
+		buttons.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
 		downloadButton.setToolTipText("Both directions: their " + language.getDisplayName() + " chat -> you, and your messages -> " + language.getDisplayName());
 		downloadButton.addActionListener(e -> downloadMissing());
 		buttons.add(downloadButton);
@@ -97,10 +102,10 @@ class LanguagePackRowPanel extends RoundedPanel
 		add(buttons);
 
 		progressBar.setAlignmentX(Component.LEFT_ALIGNMENT);
-		progressBar.setMaximumSize(new Dimension(ROW_WIDTH, 8));
-		progressBar.setPreferredSize(new Dimension(ROW_WIDTH, 8));
+		progressBar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 6));
+		progressBar.setPreferredSize(new Dimension(0, 6));
 		progressBar.setVisible(false);
-		add(javax.swing.Box.createVerticalStrut(6));
+		add(javax.swing.Box.createVerticalStrut(4));
 		add(progressBar);
 
 		refresh();

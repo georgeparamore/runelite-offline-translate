@@ -38,7 +38,7 @@ class PillButton extends JButton
 		setForeground(textColor);
 		setFocusPainted(false);
 		setBorderPainted(false);
-		setMargin(new java.awt.Insets(4, 10, 4, 10));
+		setMargin(new java.awt.Insets(2, 8, 2, 8));
 		// Matches PanelColors.CARD - the background of LanguagePackRowPanel, the only container
 		// this is used inside - so the square corners the look-and-feel fills in underneath the
 		// rounded overlay (see class javadoc) blend into the row instead of showing as a visible
