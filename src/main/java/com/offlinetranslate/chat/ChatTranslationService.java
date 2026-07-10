@@ -155,6 +155,26 @@ public class ChatTranslationService
 	{
 		MenuEntry entry = event.getMenuEntry();
 		Widget widget = entry.getWidget();
+
+		// Broad diagnostic, not gated on the CHATBOX_MESSAGE_LINES filter below: MenuEntryAdded
+		// fires for every widget-based menu entry across the whole client (inventory, minimap,
+		// tabs...), so logging all of it would flood the console, but any text-bearing widget is
+		// a small enough subset to be useful - this is the only way to find out, without a live
+        // client to test against, whether chat lines actually belong to the interface this code
+		// assumes (WidgetInfo.CHATBOX_MESSAGE_LINES), what their real group/component ids are,
+		// and whether MenuEntryAdded fires for them at all when hovering (vs. only ever firing
+		// for other unrelated widgets). If "Translate" never appears live, the answer is in here.
+		if (widget != null && widget.getText() != null && widget.getText().length() > 3)
+		{
+			System.err.println("[Offline Translate] MenuEntryAdded on text widget: option=\"" + event.getOption()
+				+ "\" widgetId=" + widget.getId()
+				+ " group=" + WidgetUtil.componentToInterface(widget.getId())
+				+ " component=" + WidgetUtil.componentToId(widget.getId())
+				+ " index=" + widget.getIndex()
+				+ " text=\"" + widget.getText() + "\""
+				+ " (expected chat group=" + WidgetInfo.CHATBOX_MESSAGE_LINES.getGroupId() + ")");
+		}
+
 		if (widget == null || WidgetUtil.componentToInterface(widget.getId()) != WidgetInfo.CHATBOX_MESSAGE_LINES.getGroupId())
 		{
 			return;
@@ -180,8 +200,14 @@ public class ChatTranslationService
 		}
 
 		ChatLineMatch match = findChatLine(widgetText);
-		if (match == null || !TRANSLATABLE_TYPES.contains(match.type))
+		if (match == null)
 		{
+			System.err.println("[Offline Translate] chat line widget hovered but no matching MessageNode found: text=\"" + widgetText + "\"");
+			return;
+		}
+		if (!TRANSLATABLE_TYPES.contains(match.type))
+		{
+			System.err.println("[Offline Translate] chat line matched but type not translatable: type=" + match.type);
 			return;
 		}
 
