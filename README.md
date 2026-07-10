@@ -11,9 +11,10 @@ download is fetching model weights, not translating your (or anyone else's) mess
   language badge when it differs from your preferred language.
 - **Logs translations** of detected foreign messages to the side panel (sender, original text,
   translated text).
-- **`/t <message>`** translates what you type from your preferred language into the current
-  output language before it's sent, so the other player sees it in their language. The output
-  language auto-updates to match whoever last spoke a different language to you (configurable).
+- **`/t <message>`** ~~translates what you type~~ **currently disabled** - see Status below.
+  The intent: translate what you type from your preferred language into the current output
+  language before it's sent, so the other player sees it in their language, with the output
+  language auto-updating to match whoever last spoke a different language to you.
 - **Downloadable language packs**, managed from the side panel, with a prompt to download a
   pack when auto-detect hits a language you don't have yet.
 
@@ -92,11 +93,20 @@ issues are the most likely thing to show up if you add a new language or swap mo
    plugin startup, right after a pack finishes downloading, and when you change your
    preferred/output language in the panel, so the cold case is rare in practice.
 
+**Disabled pending a redesign - `/t`/`!t` outgoing translation:**
+Even after fixing the `/` collision, the case-sensitivity bug, and the cold-load blocking above,
+live testing showed the chatbox's send state still got corrupted - Enter would cycle between
+the "Press Enter to Chat" placeholder and the typed text, with the message never actually
+sending, for *any* message (not just `!t` ones) while stuck. Three fixes in a row failing to
+resolve it means the core assumption was wrong, not just the timing: mutating
+`VarClientStr.CHATBOX_TYPED_TEXT` from a `KeyListener` on Enter and hoping the game reads the
+mutated value when it processes that same keypress for sending does not behave the way this was
+built expecting. `OutgoingTranslateKeyListener` is left in the codebase but **not registered**
+in `OfflineTranslatePlugin.startUp()` (commented out) until there's a mechanism verified not to
+break normal chat. Everything else - side panel, incoming detection/translation, flag icons -
+doesn't touch chat input and is unaffected.
+
 **Not yet verified - confirm on your own client:**
-- The `/t`/`!t` outgoing-translation mechanism now that it can't block the UI thread - in both
-  public chat and PMs, and specifically: does a *warm* (already-loaded) translation actually
-  rewrite and send correctly? That path was never reachable during testing so far because
-  every attempt hit the cold-load bug above first.
 - Flag-icon rendering in real chat (`ChatIconManager` wiring) and the side panel's live
   behavior.
 - Translation quality on further languages/sentences - greedy decoding (not beam search) was a
