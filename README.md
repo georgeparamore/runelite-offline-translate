@@ -174,15 +174,17 @@ issues are the most likely thing to show up if you add a new language or swap mo
     up in the side panel.
 15. **Right-click "Translate" moved from the player-option system to the chatbox itself**, per
     request - the old `MenuManager.addPlayerMenuItem()` mechanism only ever appeared on the 3D
-    player model or a chat *name* click specifically (both routed through the same player-option
-    system). It's now added directly to chat line widgets via `MenuEntryAdded` on
-    `WidgetInfo.CHATBOX_MESSAGE_LINES`, so it shows up right-clicking anywhere on the line - name
-    or message text. The hovered widget is matched back to a live `MessageNode` by comparing
-    rendered text content (tag-stripped) against `client.getChatLineMap()`, since OSRS renders
-    each chat line as one text widget rather than separate name/message widgets, and index-based
-    correlation against the combined "All" chat view isn't safe to assume without a live client
-    to verify it against. **This is the least-tested piece in the codebase right now** - needs
-    confirmation that `MenuEntryAdded` actually fires reliably for ordinary chat lines.
+    player model or a chat *name* click specifically. First attempt used `MenuEntryAdded` on
+    `WidgetInfo.CHATBOX_MESSAGE_LINES`, piggybacking on whatever default option (e.g. "Report")
+    the game already added for a hovered line - **confirmed live to never show up at all**, with
+    no diagnostics on its early-return paths to say why. Rewritten again on `MenuOpened` instead,
+    which fires once per right-click regardless of how many entries exist: this checks the mouse
+    canvas position directly against every chat line widget's bounds and adds "Translate"
+    unconditionally when the cursor is over one, rather than depending on OSRS having offered
+    something there first. The hovered widget is matched back to a live `MessageNode` by
+    comparing rendered text content (tag-stripped) against `client.getChatLineMap()`, since OSRS
+    renders each chat line as one text widget rather than separate name/message widgets. **Not
+    yet exercised live** - this is still the least-tested piece in the codebase.
 16. **Side panel log entries were showing raw formatting junk** - literal text like
     `<img=10>Optimism` instead of a clean name, and a tofu box instead of a flag, because a
     plain Swing `JLabel` can't render OSRS's `<img=N>`/`<col=...>` chat tags or flag emoji
@@ -194,6 +196,19 @@ issues are the most likely thing to show up if you add a new language or swap mo
     loop already breaks early on the model's own end-of-sequence token, so this costs nothing
     for the common short-chat-line case; it only matters for unusually long messages that were
     silently coming back cut off mid-sentence before.
+18. **`ChatLanguageDetector` now requires a confidence margin, not just the top result** -
+    reported Spanish getting misdetected as Italian. `MIN_LENGTH_FOR_DETECTION` already guards
+    against short text where the top result is wrong by a wide, confident margin, but closely
+    related Romance languages can still end up in a near-tie at 20+ characters with the wrong
+    one narrowly on top - a different failure mode. `detect()` now requires the top candidate to
+    lead the runner-up by `MIN_CONFIDENCE_MARGIN` (0.15); closer ties return null (not detected)
+    instead of guessing. Not tuned against a specific repro - the margin prints on every call, so
+    a recurrence will show the actual numbers to tune against.
+19. **Added a "Download all" button** above the language pack list, and a "Show flags in chat"
+    checkbox in the side panel (the underlying config option already existed but wasn't exposed
+    there, unlike auto-detect/auto-update which already had their own checkboxes). Also raised
+    the "Translated messages" log height from 300 to 500px - a handful of entries were already
+    requiring a scroll within that section.
 
 **Not yet verified - confirm on your own client:**
 - The redesigned translate hotkey now that channel-prefix preservation and incoming detection
@@ -203,12 +218,15 @@ issues are the most likely thing to show up if you add a new language or swap mo
   before you press Enter (unlike PMs, which do). Two rebuild-script attempts
   (`CHAT_TEXT_INPUT_REBUILD`, `BUILD_CHATBOX`) plus a same-tick-ordering fix (deferring the
   rebuild to the next tick via `invokeLater`) haven't confirmed-fixed it yet.
-- The rebuilt chatbox right-click "Translate" (item 15) - not yet exercised live at all. Needs
-  confirmation that `MenuEntryAdded` actually fires for ordinary public/friends/clan chat lines,
-  that the widget-to-`MessageNode` text-matching in `findChatLine()` actually finds a match
-  (watch the console for `chat line widget hovered but no matching MessageNode found` - if that
-  ever prints, the matching approach needs rethinking), and that right-clicking works both on
+- The `MenuOpened`-based chatbox right-click "Translate" (item 15, second rewrite) - not yet
+  exercised live at all. Needs confirmation that `client.getWidget(WidgetInfo.CHATBOX_MESSAGE_LINES)`
+  actually resolves to a real widget with children (watch for `chatbox message-lines widget ...
+  has no children` in the console - if that prints, the widget assumption itself is wrong), that
+  the widget-to-`MessageNode` text-matching in `findChatLine()` finds a match (watch for `chat
+  line under cursor but no matching MessageNode found`), and that right-clicking works both on
   the name portion and elsewhere in the message text on the same line.
+- The Spanish/Italian detection margin fix (item 18) and the "Show flags in chat" panel
+  checkbox / taller log (item 19) - none exercised live yet.
 - Translation quality on further languages/sentences - greedy decoding (not beam search) was a
   deliberate v1 simplicity tradeoff, so expect occasional rougher phrasing on longer or more
   ambiguous input than the short chat-style lines tested above.
