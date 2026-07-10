@@ -269,6 +269,27 @@ issues are the most likely thing to show up if you add a new language or swap mo
     container so the unrounded corners hide underneath. Also renamed "Installed language packs"
     back to "Language packs" - copied from the reference mockup without noticing the list shows
     every available language, not just downloaded ones, which read as misleading.
+24. **The real bug behind item 23 (item 22's PillButton theory was wrong)** - a third screenshot
+    showed rows still collapsed after that fix. Reproduced the actual cause in an isolated
+    standalone test against real `javax.swing.BoxLayout`: `LanguagePackRowPanel` called
+    `setMaximumSize(new Dimension(MAX_VALUE, getMaximumSize().height))` *before* adding any
+    children - an empty `BoxLayout` container's own computed max size is `(0, 0)`, and
+    `setMaximumSize()` stores that as a permanent override that's never recomputed once real
+    children exist. The row's *preferred* height correctly grew with real content, but its
+    cached *maximum* stayed locked at `0`, and `BoxLayout` clamps actual allocated height to the
+    smaller of the two - squashing every row regardless of what it needed. (Confirmed
+    `BorderLayout`-based rows elsewhere aren't exposed to this: `BorderLayout` doesn't implement
+    the `LayoutManager2.maximumLayoutSize()` computation `BoxLayout` does, so it always reports
+    unbounded regardless of children - checked with the same kind of isolated test.) Fixed by
+    removing the early call entirely rather than moving it later: this row only ever lives in a
+    scrollable list with nothing competing for its leftover space, so capping its height was
+    never actually necessary, and doing so also fought the progress bar's dynamic show/hide
+    (which changes the row's real preferred height at runtime - another reason a one-time cap
+    was the wrong approach regardless of when it ran). Also fixed `Language.toString()`, which
+    still embedded the flag emoji and caused the same garbled-text bug in RuneLite's own
+    auto-generated config screen (outside this plugin's control, and using its own default combo
+    box renderer that calls `toString()`) - this plugin's own panel never relied on `toString()`
+    for display, so removing the emoji there costs it nothing.
 
 **Not yet verified - confirm on your own client:**
 - The redesigned translate hotkey now that channel-prefix preservation and incoming detection
