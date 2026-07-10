@@ -154,6 +154,15 @@ issues are the most likely thing to show up if you add a new language or swap mo
     `/@g`, `/@gc`, `/@f`, `/@p` - the same set RuneLingual's `PlayerMessage.java` checks for
     the same reason), translates only the message body, and reassembles prefix + translation
     before writing back.
+13. **The "Translated messages" side panel log was unreachable, not just broken** - diagnostics
+    confirmed translate-and-log was succeeding on every incoming message, but nothing ever
+    appeared, because RuneLite's sidebar doesn't wrap plugin panels in a scroll container of its
+    own. The panel used to split content between `BorderLayout.NORTH` (selectors, checkboxes,
+    the pack list) and `BorderLayout.CENTER` (the log) - once `NORTH` grew taller than the
+    visible sidebar area, `CENTER` was squeezed to near zero with literally no scrollbar
+    anywhere that reached it. Fixed by building the whole panel as one continuous `BoxLayout`
+    column and wrapping that single column in one outer `JScrollPane`, so scrolling the sidebar
+    now reaches every section including the log.
 
 **Not yet verified - confirm on your own client:**
 - The redesigned translate hotkey now that channel-prefix preservation and incoming detection
@@ -165,7 +174,15 @@ issues are the most likely thing to show up if you add a new language or swap mo
   rebuild to the next tick via `invokeLater`) haven't confirmed-fixed it yet.
 - Right-click "Translate" - implemented but not yet exercised live (both the world-player and
   chat-name click paths, and whether the last-message tracking correctly follows the right
-  player when there are several people talking).
+  player when there are several people talking). Diagnostics were added to confirm whether
+  `MenuManager.addPlayerMenuItem()` actually landed - RuneLite only has 4 shared custom
+  player-menu-option slots system-wide, and another enabled plugin could already have claimed
+  all of them, which would make registration silently no-op. Check the console for
+  `player menu options after registration: [...]` after logging in.
+- The side panel log scroll fix (item 13) - the log itself was confirmed logging correctly
+  before this fix, so this should just be a matter of scrolling down, but worth a live check
+  that the outer scroll pane behaves (mouse wheel, scrollbar drag) as expected in RuneLite's
+  actual sidebar rather than a plain Swing test harness.
 - Translation quality on further languages/sentences - greedy decoding (not beam search) was a
   deliberate v1 simplicity tradeoff, so expect occasional rougher phrasing on longer or more
   ambiguous input than the short chat-style lines tested above.
