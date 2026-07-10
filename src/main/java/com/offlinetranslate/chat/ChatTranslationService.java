@@ -183,6 +183,7 @@ public class ChatTranslationService
 			return;
 		}
 
+		System.err.println("[Offline Translate] Manual translate: detected=" + detected + " preferred=" + preferred);
 		if (detected == null)
 		{
 			warn("Couldn't confidently detect the language of " + sender + "'s last message.");
@@ -195,6 +196,7 @@ public class ChatTranslationService
 		}
 
 		PackStatus toEnglishStatus = detected.isEnglish() ? PackStatus.READY : modelManager.getStatus(detected, PackDirection.TO_ENGLISH);
+		System.err.println("[Offline Translate] Manual translate: toEnglishStatus=" + toEnglishStatus);
 		if (toEnglishStatus != PackStatus.READY)
 		{
 			if (config.promptToDownloadMissingPacks() && promptedThisSession.add(detected))
@@ -211,11 +213,24 @@ public class ChatTranslationService
 		try
 		{
 			String translated = translationEngine.translate(message, detected, preferred);
+			System.err.println("[Offline Translate] Manual translate: logging to panel: sender=" + sender + " translated=\"" + translated + "\"");
 			panel.logTranslatedMessage(new TranslatedMessageEntry(sender, message, translated, detected));
 		}
 		catch (TranslationException e)
 		{
 			System.err.println("[Offline Translate] Manual translate failed for " + sender + ":");
+			e.printStackTrace();
+		}
+		catch (RuntimeException e)
+		{
+			// Broader than the TranslationException catch above on purpose: this task runs via
+			// ExecutorService.submit(Runnable), which silently discards any exception thrown out
+			// of the task with zero console output (the Future holding it is never inspected) -
+			// confirmed as a real gap after a live test showed detection succeeding and then
+			// nothing at all, with no way to tell whether that meant "succeeded with no log
+			// line" or "threw something unexpected and vanished". This makes that failure mode
+			// visible instead of silent.
+			System.err.println("[Offline Translate] Manual translate: unexpected error for " + sender + ":");
 			e.printStackTrace();
 		}
 	}
