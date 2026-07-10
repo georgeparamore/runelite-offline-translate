@@ -26,7 +26,7 @@ public interface OfflineTranslateConfig extends Config
 	@ConfigItem(
 		keyName = "autoDetect",
 		name = "Auto-detect chat language",
-		description = "Scan incoming chat messages and detect their language automatically.",
+		description = "Scan incoming chat messages and detect their language automatically. Only attempts messages of a certain length - shorter ones (single words, short greetings) were confirmed to get confidently misdetected rather than just skipped, so they're left alone entirely instead.",
 		position = 1
 	)
 	default boolean autoDetect()

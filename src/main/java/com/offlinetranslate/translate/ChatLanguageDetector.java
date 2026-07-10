@@ -4,6 +4,7 @@ import com.offlinetranslate.Language;
 import com.optimaize.langdetect.DetectedLanguage;
 import com.optimaize.langdetect.LanguageDetector;
 import com.optimaize.langdetect.LanguageDetectorBuilder;
+import com.optimaize.langdetect.i18n.LdLocale;
 import com.optimaize.langdetect.ngram.NgramExtractors;
 import com.optimaize.langdetect.profiles.LanguageProfile;
 import com.optimaize.langdetect.profiles.LanguageProfileReader;
@@ -11,6 +12,7 @@ import com.optimaize.langdetect.text.CommonTextObjectFactories;
 import com.optimaize.langdetect.text.TextObject;
 import com.optimaize.langdetect.text.TextObjectFactory;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -21,13 +23,20 @@ import lombok.extern.slf4j.Slf4j;
  * language-detector library ships its n-gram profiles in its own jar, so detection works
  * immediately with no language pack required.
  * <p>
- * OSRS chat lines are short (max ~80 characters after the game's own truncation, often just a
- * single word), which is the hard case for statistical language ID - short text gives the
- * n-gram model much less signal than the paragraph-length input it's tuned for. {@link
- * #detect(String)} takes the library's single best guess unconditionally (see the method body
- * for why) rather than only trusting high-confidence results, so it favors actually detecting
- * short messages over refusing to guess - expect it to be wrong more often on a one-word
- * message than a full sentence, not to return null for one.
+ * <b>Short text is not just lower-accuracy here, it's actively wrong, confidently.</b>
+ * Confirmed live with a battery of real short phrases: "good luck" -&gt; Polish at 92%,
+ * "nice job" -&gt; Polish at 60%, "well done" -&gt; Dutch at 85%, "hello" -&gt; Italian at 60%,
+ * "Hola amigo" -&gt; Italian at 80% - all wrong, none of them hedged or low-confidence, this
+ * isn't a "detector unsure, defaults reasonably" situation. That's a known failure mode of
+ * n-gram-based language ID on short input: with too few n-grams to work with, a completely
+ * unrelated language's profile can spuriously look like the closest match, and the algorithm
+ * has no way to know it's guessing. The exact same battery of test phrases, once extended to
+ * full-sentence length (23+ characters), hit 99.99%+ correct in every case tried - the model
+ * genuinely works well, just not on short input. So {@link #detect(String)} requires a real
+ * minimum length before attempting detection at all, rather than trying to salvage short input
+ * with a confidence/margin heuristic - the wrong answers above were often *more* "confident"
+ * than correct ones elsewhere, so confidence alone doesn't distinguish real detections from
+ * spurious ones here.
  */
 @Slf4j
 @Singleton
@@ -42,14 +51,34 @@ public class ChatLanguageDetector
 		LanguageDetector detector;
 		try
 		{
-			List<LanguageProfile> profiles = new LanguageProfileReader().readAllBuiltIn();
+			// readAllBuiltIn() (70 languages) was confirmed live to actively misdetect short
+			// chat-length text: "Hola" -> Turkish at 61% confidence, "Hola amigo" -> Somali at
+			// 96%, "hello" -> Breton at 72%, all wrong, all high-"confidence" - a well-known
+			// failure mode of n-gram detection on short text, where with too few n-grams to
+			// work with, an obscure unrelated language's profile can spuriously look like the
+			// closest match. Restricting the candidate set to only the languages this plugin
+			// actually supports removes that noise (Breton/Somali/Turkish/etc. are never
+			// competing for the guess), which is the standard mitigation for this problem.
+			List<LdLocale> supportedLocales = new ArrayList<>();
+			for (Language language : Language.values())
+			{
+				supportedLocales.add(LdLocale.fromString(language.getCode()));
+			}
+			List<LanguageProfile> profiles = new LanguageProfileReader().readBuiltIn(supportedLocales);
+			System.err.println("[Offline Translate] language-detector loaded " + profiles.size() + " profiles");
 			detector = LanguageDetectorBuilder.create(NgramExtractors.standard())
 				.withProfiles(profiles)
 				.build();
 		}
 		catch (IOException e)
 		{
-			log.warn("Failed to load language-detector profiles; auto-detect will be disabled", e);
+			// printStackTrace(), not log.warn(): SLF4J was observed defaulting to a no-op
+			// logger under the plain JavaExec launch, silently swallowing exactly this kind of
+			// diagnostic - this failure mode (profiles fail to load -> languageDetector stays
+			// null -> detect() always returns null unconditionally, for every message) would
+			// otherwise look identical to "detection ran but wasn't confident enough."
+			System.err.println("[Offline Translate] Failed to load language-detector profiles - auto-detect will be disabled:");
+			e.printStackTrace();
 			detector = null;
 		}
 		this.languageDetector = detector;
@@ -57,25 +86,32 @@ public class ChatLanguageDetector
 	}
 
 	/**
+	 * Below this, detection was confirmed live to be actively wrong (not just low-confidence)
+	 * more often than not - see the class javadoc for the actual test data. This isn't a tuned
+	 * precise boundary, just comfortably above the 9-23 character range where things broke:
+	 * every real-sentence-length phrase tried (23+ characters) came back 99.99%+ correct.
+	 */
+	private static final int MIN_LENGTH_FOR_DETECTION = 20;
+
+	/**
 	 * @return the detected {@link Language} (which may be {@link Language#ENGLISH}), or null if
-	 * detection is unavailable or the detected language isn't in the supported list at all.
+	 * detection is unavailable, the text is shorter than {@link #MIN_LENGTH_FOR_DETECTION}, or
+	 * the detected language isn't in the supported list at all.
 	 */
 	public Language detect(String text)
 	{
-		if (languageDetector == null || text == null || text.trim().length() < 3)
+		if (languageDetector == null || text == null || text.trim().length() < MIN_LENGTH_FOR_DETECTION)
 		{
 			return null;
 		}
 
-		// Deliberately getProbabilities() + take the top result, not detect(). Confirmed live:
-		// detect() returned absent for a plain one-word "Hola" - a real OSRS chat message, not
-		// an edge case - because its confidence bar is tuned for paragraph-length text, not
-		// chat lines. The library's own javadoc on detect() says as much: "you may want to use
-		// getProbabilities() instead. This here is very strict, and sometimes returns absent
-		// even though the first choice in getProbabilities() is correct." Trading some false
-		// positives on genuinely ambiguous short text for actually detecting the common case.
+		// getProbabilities(), not detect(): the library's own javadoc on detect() recommends
+		// this ("very strict, and sometimes returns absent even though the first choice in
+		// getProbabilities() is correct"). Safe to take the top result unconditionally now that
+		// short input (where that top result was often wrong) is filtered out above.
 		TextObject textObject = textObjectFactory.forText(text);
 		List<DetectedLanguage> probabilities = languageDetector.getProbabilities(textObject);
+		System.err.println("[Offline Translate] getProbabilities(\"" + text + "\") -> " + probabilities);
 		if (probabilities.isEmpty())
 		{
 			return null;

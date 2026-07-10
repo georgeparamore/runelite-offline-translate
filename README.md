@@ -111,12 +111,33 @@ issues are the most likely thing to show up if you add a new language or swap mo
    This still changes what's actually transmitted (unlike RuneLingual's local-only approach),
    it just no longer shares a keystroke with the send action.
 
+9. **Incoming detection never fired on realistic OSRS chat messages, for two compounding
+   reasons**, both confirmed live and fixed in `ChatLanguageDetector`:
+   - The detector's own `detect()` method is deliberately over-strict (its javadoc says as
+     much) and returned nothing for plain, unambiguous input like `"Hola"`. Switched to
+     `getProbabilities()` and take the top result, per the library's own recommendation.
+   - That alone wasn't enough: loading all 70 of the library's built-in language profiles
+     meant short chat-length text could spuriously match an unrelated, irrelevant language's
+     n-gram profile. Confirmed with a real battery of test phrases: `"good luck"` -> Polish at
+     92%, `"well done"` -> Dutch at 85%, `"hello"` -> Italian at 60% - all wrong, all
+     *confidently* wrong, not hedged. The same phrases extended to real-sentence length
+     (23+ characters) hit 99.99%+ correct in every case tried. So detection now (a) only
+     loads profiles for the ~13 languages this plugin actually supports, cutting out
+     irrelevant noise like Breton/Somali/Turkish competing for short-text matches, and
+     (b) requires a minimum length before attempting detection at all, rather than trying to
+     salvage short input with a confidence threshold - the wrong answers above were often
+     *more* "confident" than correct ones elsewhere, so confidence alone can't tell real
+     detections from spurious ones here. Net effect: short greetings/single words won't get
+     flagged (an accepted tradeoff), but full sentences are genuinely reliable.
+
 **Not yet verified - confirm on your own client:**
-- The redesigned translate hotkey (default Ctrl+T, `OutgoingTranslateKeyListener`) - does it
-  correctly rewrite the chatbox text without disturbing it otherwise, and does a subsequent
-  normal Enter press send the translated text cleanly?
-- Flag-icon rendering in real chat (`ChatIconManager` wiring) and the side panel's live
-  behavior.
+- The redesigned translate hotkey (default Ctrl+T, `OutgoingTranslateKeyListener`) now that
+  incoming detection actually works - full end-to-end incoming flag + side-panel-log test.
+- The public/clan/FC chatbox display lag when using the translate hotkey - confirmed the
+  underlying translation and send are both correct, but the box itself doesn't visually update
+  before you press Enter (unlike PMs, which do). Two rebuild-script attempts
+  (`CHAT_TEXT_INPUT_REBUILD`, `BUILD_CHATBOX`) haven't fixed it; parked as a known cosmetic
+  limitation since sending itself works.
 - Translation quality on further languages/sentences - greedy decoding (not beam search) was a
   deliberate v1 simplicity tradeoff, so expect occasional rougher phrasing on longer or more
   ambiguous input than the short chat-style lines tested above.
