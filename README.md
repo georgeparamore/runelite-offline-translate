@@ -257,6 +257,18 @@ issues are the most likely thing to show up if you add a new language or swap mo
     mockup's own icon-only treatment there. Also proactively swapped the "Clear" button's "🗑"
     emoji for a drawn `TrashIcon` on the same reasoning, before it was confirmed broken by a
     screenshot rather than after.
+23. **Pack row Download/Delete buttons were invisible** - a second live screenshot after item 22
+    showed rows rendering as just a flag+name line with no buttons and no way to tell which
+    packs were downloaded. `PillButton` used `setContentAreaFilled(false)` +
+    `setOpaque(false)` to paint a custom rounded pill instead of the look-and-feel's own square
+    background - a normally-safe Swing pattern, but the *only* piece of this redesign using that
+    specific combination, versus the custom-`Icon`-via-`setIcon()` technique that item 22's
+    (confirmed working) checkbox/combo-box fixes both used instead. Rewritten to stay opaque
+    (the look-and-feel default) and paint the rounded pill on top of the normal square
+    background instead of replacing it, with the button's own background color matched to its
+    container so the unrounded corners hide underneath. Also renamed "Installed language packs"
+    back to "Language packs" - copied from the reference mockup without noticing the list shows
+    every available language, not just downloaded ones, which read as misleading.
 
 **Not yet verified - confirm on your own client:**
 - The redesigned translate hotkey now that channel-prefix preservation and incoming detection
