@@ -59,12 +59,12 @@ public interface OfflineTranslateConfig extends Config
 	@ConfigItem(
 		keyName = "translateHotkey",
 		name = "Translate hotkey",
-		description = "Type your message normally, then press this to translate it in place (from your preferred language into the output language) before you send it yourself with a normal Enter press. Deliberately a separate key from Enter - rewriting the chatbox text during the same keypress that sends it was tried and confirmed to corrupt the client's send state rather than translate anything.",
+		description = "Type your message normally, then press this to translate it in place (from your preferred language into the output language) before you send it yourself with a normal Enter press. Deliberately a separate key from Enter - rewriting the chatbox text during the same keypress that sends it was tried and confirmed to corrupt the client's send state rather than translate anything. Defaults to Cmd+T rather than Ctrl+T because, confirmed on a live Intel Mac, AWT doesn't reliably report the physical key code for Control+letter combos there - Command+letter does.",
 		position = 4
 	)
 	default Keybind translateHotkey()
 	{
-		return new Keybind(KeyEvent.VK_T, InputEvent.CTRL_DOWN_MASK);
+		return new Keybind(KeyEvent.VK_T, InputEvent.META_DOWN_MASK);
 	}
 
 	@ConfigItem(
