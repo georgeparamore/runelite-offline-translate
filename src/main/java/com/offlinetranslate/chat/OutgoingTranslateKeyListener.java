@@ -93,7 +93,10 @@ public class OutgoingTranslateKeyListener implements KeyListener
 		}
 
 		String typed = client.getVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT);
-		if (typed == null || !typed.startsWith(prefix))
+		// Case-insensitive: OSRS's own chatbox auto-capitalizes the first letter you type, so
+		// a lowercase-first prefix like "!t " arrives here as "!T " by the time Enter is
+		// pressed - a case-sensitive startsWith() silently never matches it.
+		if (typed == null || typed.length() < prefix.length() || !typed.regionMatches(true, 0, prefix, 0, prefix.length()))
 		{
 			return;
 		}
