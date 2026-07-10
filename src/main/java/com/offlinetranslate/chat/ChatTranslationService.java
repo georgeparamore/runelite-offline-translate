@@ -147,12 +147,17 @@ public class ChatTranslationService
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
+		if (RIGHT_CLICK_OPTION.equals(event.getMenuOption()))
+		{
+			System.err.println("[Offline Translate] menu option \"" + RIGHT_CLICK_OPTION + "\" clicked: action=" + event.getMenuAction() + " target=\"" + event.getMenuTarget() + "\"");
+		}
 		if (event.getMenuAction() != MenuAction.RUNELITE_PLAYER || !RIGHT_CLICK_OPTION.equals(event.getMenuOption()))
 		{
 			return;
 		}
 
 		String playerName = normalizePlayerName(event.getMenuTarget());
+		System.err.println("[Offline Translate] normalized target=\"" + playerName + "\" lastMessage=" + lastMessageByPlayer.get(playerName) + " known players=" + lastMessageByPlayer.keySet());
 		String message = lastMessageByPlayer.get(playerName);
 		if (message == null)
 		{
