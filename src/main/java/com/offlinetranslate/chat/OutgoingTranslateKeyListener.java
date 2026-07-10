@@ -83,16 +83,20 @@ public class OutgoingTranslateKeyListener implements KeyListener
 		e.consume();
 
 		String typed = client.getVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT);
+		System.err.println("[Offline Translate] hotkey fired, typed=\"" + typed + "\"");
 		if (typed == null || typed.trim().isEmpty())
 		{
+			System.err.println("[Offline Translate] nothing typed, doing nothing");
 			return;
 		}
 
 		Language source = config.preferredLanguage();
 		Language target = config.outputLanguage();
+		System.err.println("[Offline Translate] source=" + source + " target=" + target);
 
 		if (!packsReady(source, target))
 		{
+			System.err.println("[Offline Translate] packs not ready, aborting");
 			warn("Missing language pack for " + source.getDisplayName() + " -> " + target.getDisplayName() + " - nothing to translate yet.");
 			return;
 		}
@@ -103,6 +107,7 @@ public class OutgoingTranslateKeyListener implements KeyListener
 		// typed text untouched and warm up in the background instead of translating it now.
 		boolean sourceWarm = source.isEnglish() || translationEngine.isWarm(source, PackDirection.TO_ENGLISH);
 		boolean targetWarm = target.isEnglish() || translationEngine.isWarm(target, PackDirection.FROM_ENGLISH);
+		System.err.println("[Offline Translate] sourceWarm=" + sourceWarm + " targetWarm=" + targetWarm);
 		if (!sourceWarm || !targetWarm)
 		{
 			translationEngine.warmUp(source, PackDirection.TO_ENGLISH);
@@ -114,7 +119,17 @@ public class OutgoingTranslateKeyListener implements KeyListener
 		try
 		{
 			String translated = translationEngine.translate(typed, source, target);
-			client.setVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT, translated);
+			System.err.println("[Offline Translate] translated \"" + typed + "\" -> \"" + translated + "\"");
+			// Writing the var alone (from this thread, without a follow-up redraw signal) was
+			// confirmed live to leave the on-screen chatbox showing the old text even though
+			// the underlying value presumably changed - the input line likely doesn't
+			// repaint from CHATBOX_TYPED_TEXT on its own the way a normal keystroke's redraw
+			// does. Matching the same pattern already confirmed working for chat message
+			// flagging: mutate on the client thread and follow with refreshChat().
+			clientThread.invoke(() -> {
+				client.setVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT, translated);
+				client.refreshChat();
+			});
 		}
 		catch (TranslationException ex)
 		{
