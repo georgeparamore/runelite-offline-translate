@@ -8,13 +8,10 @@ import com.offlinetranslate.model.PackDirection;
 import com.offlinetranslate.translate.TranslationEngine;
 import com.offlinetranslate.ui.OfflineTranslatePanel;
 import java.awt.image.BufferedImage;
-import java.util.Arrays;
 import javax.inject.Inject;
-import net.runelite.api.Client;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.input.KeyManager;
-import net.runelite.client.menus.MenuManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -41,12 +38,6 @@ public class OfflineTranslatePlugin extends Plugin
 
 	@Inject
 	private KeyManager keyManager;
-
-	@Inject
-	private MenuManager menuManager;
-
-	@Inject
-	private Client client;
 
 	@Inject
 	private OfflineTranslateConfig config;
@@ -88,16 +79,10 @@ public class OfflineTranslatePlugin extends Plugin
 
 		eventBus.register(chatTranslationService);
 
-		// Adds "Translate" to every player's right-click menu (same mechanism "Add friend"/
-		// "Report" use) - works both on world player right-clicks and chat name right-clicks,
-		// since OSRS handles both through the same underlying player-option system. Click
-		// handling lives in ChatTranslationService.onMenuOptionClicked.
-		menuManager.addPlayerMenuItem(ChatTranslationService.RIGHT_CLICK_OPTION);
-		// Diagnostic: RuneLite only has 4 shared custom player-menu-option slots system-wide
-		// (indices 4-7 of getPlayerOptions()) - if other enabled plugins already used all of
-		// them, addPlayerMenuItem() above silently no-ops with no error. This confirms whether
-		// registration actually landed rather than assuming it did.
-		System.err.println("[Offline Translate] player menu options after registration: " + Arrays.toString(client.getPlayerOptions()));
+		// The "Translate" right-click option is added directly to chat line widgets in
+		// ChatTranslationService.onMenuEntryAdded, not registered here - see that class's
+		// RIGHT_CLICK_OPTION javadoc for why (this is the actual chatbox line, not the 3D player
+		// model / the shared 4-slot player-option system that mechanism used previously).
 
 		// Re-enabled with a redesigned mechanism: translate-in-place on a dedicated hotkey
 		// (default Ctrl+T), completely decoupled from Enter/sending. The earlier version tried
@@ -117,7 +102,6 @@ public class OfflineTranslatePlugin extends Plugin
 	{
 		clientToolbar.removeNavigation(navigationButton);
 		eventBus.unregister(chatTranslationService);
-		menuManager.removePlayerMenuItem(ChatTranslationService.RIGHT_CLICK_OPTION);
 		keyManager.unregisterKeyListener(outgoingTranslateKeyListener);
 		chatTranslationService.shutdown();
 		translationEngine.shutdown();

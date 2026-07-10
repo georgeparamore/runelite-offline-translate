@@ -30,8 +30,14 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 class MarianOnnxTranslator implements AutoCloseable
 {
-	private static final int MAX_INPUT_TOKENS = 128;
-	private static final int MAX_NEW_TOKENS = 96;
+	// Raised from the original 128/96: OSRS chat lines are short, so these were never expected
+	// to bind, but they're the reason a longer message could come back silently cut off mid-
+	// sentence instead of erroring - the decode loop below already breaks early on the model's
+	// own end-of-sequence token (see the `if (nextId == config.eosTokenId) break;` a bit further
+	// down), so raising the cap costs nothing for the common short-message case and only matters
+	// for the rare long one.
+	private static final int MAX_INPUT_TOKENS = 400;
+	private static final int MAX_NEW_TOKENS = 400;
 
 	private final OrtEnvironment env;
 	private final OrtSession encoderSession;

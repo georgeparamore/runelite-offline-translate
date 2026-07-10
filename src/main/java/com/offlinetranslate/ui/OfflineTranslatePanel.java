@@ -70,8 +70,7 @@ public class OfflineTranslatePanel extends PluginPanel
 		top.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		top.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-		top.add(sectionLabel("Your language"));
-		top.add(javax.swing.Box.createVerticalStrut(3));
+		top.add(sectionHeader("Your language"));
 		preferredLanguageBox = new JComboBox<>(Language.values());
 		preferredLanguageBox.setSelectedItem(config.preferredLanguage());
 		preferredLanguageBox.addActionListener(e -> {
@@ -89,9 +88,8 @@ public class OfflineTranslatePanel extends PluginPanel
 			OfflineTranslateConfig.GROUP, "autoDetect", autoDetectBox.isSelected()));
 		top.add(autoDetectBox);
 
-		top.add(sectionDivider());
-		top.add(sectionLabel("Output language (for the translate hotkey)"));
-		top.add(javax.swing.Box.createVerticalStrut(3));
+		top.add(javax.swing.Box.createVerticalStrut(14));
+		top.add(sectionHeader("Output language (for the translate hotkey)"));
 		outputLanguageBox = new JComboBox<>(java.util.Arrays.stream(Language.values())
 			.filter(Language::supportsTranslationFromEnglish)
 			.toArray(Language[]::new));
@@ -111,9 +109,8 @@ public class OfflineTranslatePanel extends PluginPanel
 			OfflineTranslateConfig.GROUP, "autoUpdateOutputLanguage", autoUpdateOutputBox.isSelected()));
 		top.add(autoUpdateOutputBox);
 
-		top.add(sectionDivider());
-		top.add(sectionLabel("Language packs"));
-		top.add(javax.swing.Box.createVerticalStrut(3));
+		top.add(javax.swing.Box.createVerticalStrut(14));
+		top.add(sectionHeader("Language packs"));
 		packListPanel.setLayout(new GridLayout(0, 1));
 		packListPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		for (Language language : Language.values())
@@ -128,12 +125,11 @@ public class OfflineTranslatePanel extends PluginPanel
 		packScroll.setPreferredSize(new Dimension(0, 220));
 		packScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 220));
 		packScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
-		packScroll.setBorder(BorderFactory.createLineBorder(ColorScheme.DARK_GRAY_COLOR));
+		packScroll.setBorder(BorderFactory.createLineBorder(ColorScheme.DARKER_GRAY_COLOR.darker()));
 		top.add(packScroll);
 
-		top.add(sectionDivider());
-		top.add(sectionLabel("Translated messages"));
-		top.add(javax.swing.Box.createVerticalStrut(3));
+		top.add(javax.swing.Box.createVerticalStrut(14));
+		top.add(sectionHeader("Translated messages"));
 		// logPanel has its own internal JScrollPane (see TranslatedMessageLogPanel) with no
 		// fixed size of its own, so inside this outer BoxLayout column it needs an explicit
 		// height or it collapses to near-zero - same reasoning as packScroll's fixed height
@@ -160,24 +156,36 @@ public class OfflineTranslatePanel extends PluginPanel
 		checkbox.setFocusPainted(false);
 	}
 
-	private static JLabel sectionLabel(String text)
+	/**
+	 * A section title with a short accent-colored underline directly beneath it, instead of a
+	 * full-width gray divider bar - reads as a modern, compact heading rather than a slab of
+	 * empty space between sections.
+	 */
+	private static JPanel sectionHeader(String text)
 	{
+		JPanel header = new JPanel();
+		header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+		header.setOpaque(false);
+		header.setAlignmentX(Component.LEFT_ALIGNMENT);
+		header.setMaximumSize(new Dimension(Integer.MAX_VALUE, header.getMaximumSize().height));
+
 		JLabel label = new JLabel(text);
 		label.setFont(FontManager.getRunescapeBoldFont());
 		label.setForeground(ColorScheme.BRAND_ORANGE);
 		label.setAlignmentX(Component.LEFT_ALIGNMENT);
-		return label;
-	}
+		header.add(label);
 
-	private static JPanel sectionDivider()
-	{
-		JPanel divider = new JPanel();
-		divider.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		divider.setAlignmentX(Component.LEFT_ALIGNMENT);
-		divider.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
-		divider.setPreferredSize(new Dimension(0, 1));
-		divider.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
-		return divider;
+		header.add(javax.swing.Box.createVerticalStrut(3));
+
+		JPanel underline = new JPanel();
+		underline.setBackground(ColorScheme.BRAND_ORANGE);
+		underline.setAlignmentX(Component.LEFT_ALIGNMENT);
+		underline.setMaximumSize(new Dimension(28, 2));
+		underline.setPreferredSize(new Dimension(28, 2));
+		header.add(underline);
+
+		header.add(javax.swing.Box.createVerticalStrut(6));
+		return header;
 	}
 
 	/** Appends a translated incoming message to the side panel log. Safe to call off the EDT. */

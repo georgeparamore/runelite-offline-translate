@@ -1,6 +1,7 @@
 package com.offlinetranslate.ui;
 
 import com.offlinetranslate.Language;
+import com.offlinetranslate.chat.FlagIconFactory;
 import com.offlinetranslate.model.DownloadProgress;
 import com.offlinetranslate.model.ModelManager;
 import com.offlinetranslate.model.PackDirection;
@@ -11,6 +12,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
+import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -53,7 +55,9 @@ class LanguagePackRowPanel extends JPanel
 		setMaximumSize(new Dimension(Integer.MAX_VALUE, getMaximumSize().height));
 		setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		JLabel nameLabel = new JLabel(language.getFlagEmoji() + "  " + language.getDisplayName());
+		JLabel nameLabel = new JLabel(language.getDisplayName());
+		nameLabel.setIcon(new ImageIcon(FlagIconFactory.create(language, 16, 11)));
+		nameLabel.setIconTextGap(6);
 		nameLabel.setFont(FontManager.getRunescapeBoldFont());
 		nameLabel.setForeground(ColorScheme.TEXT_COLOR);
 		nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);

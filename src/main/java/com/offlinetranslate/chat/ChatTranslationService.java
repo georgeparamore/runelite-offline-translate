@@ -20,12 +20,17 @@ import java.util.concurrent.Executors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatLineBuffer;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.MenuAction;
+import net.runelite.api.MenuEntry;
 import net.runelite.api.MessageNode;
 import net.runelite.api.events.ChatMessage;
-import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetInfo;
+import net.runelite.api.widgets.WidgetUtil;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ChatIconManager;
@@ -51,13 +56,14 @@ public class ChatTranslationService
 	);
 
 	/**
-	 * Registered as a persistent player right-click option via {@code MenuManager}, the same
-	 * mechanism "Add friend"/"Report" use - it appears both on world player right-clicks and on
-	 * chat name right-clicks, since OSRS handles both through the same underlying player-option
-	 * system. Public so {@link com.offlinetranslate.OfflineTranslatePlugin} can register/
-	 * deregister it without duplicating the literal string.
+	 * Added directly to chat line widgets via {@link #onMenuEntryAdded}, rather than through
+	 * {@code MenuManager.addPlayerMenuItem()} (the original implementation, which only ever
+	 * appeared on the 3D player model / chat *name* click, both driven by the same underlying
+	 * player-option system). Piggybacking on the chat line's own widget instead means this shows
+	 * up right-clicking anywhere on the line - the name or the message text - inside the actual
+	 * chatbox, which is what was asked for.
 	 */
-	public static final String RIGHT_CLICK_OPTION = "Translate";
+	static final String RIGHT_CLICK_OPTION = "Translate";
 	private static final int MAX_TRACKED_PLAYERS = 200;
 
 	private final Client client;
@@ -145,27 +151,108 @@ public class ChatTranslationService
 	}
 
 	@Subscribe
-	public void onMenuOptionClicked(MenuOptionClicked event)
+	public void onMenuEntryAdded(MenuEntryAdded event)
 	{
-		if (RIGHT_CLICK_OPTION.equals(event.getMenuOption()))
-		{
-			System.err.println("[Offline Translate] menu option \"" + RIGHT_CLICK_OPTION + "\" clicked: action=" + event.getMenuAction() + " target=\"" + event.getMenuTarget() + "\"");
-		}
-		if (event.getMenuAction() != MenuAction.RUNELITE_PLAYER || !RIGHT_CLICK_OPTION.equals(event.getMenuOption()))
+		MenuEntry entry = event.getMenuEntry();
+		Widget widget = entry.getWidget();
+		if (widget == null || WidgetUtil.componentToInterface(widget.getId()) != WidgetInfo.CHATBOX_MESSAGE_LINES.getGroupId())
 		{
 			return;
 		}
 
-		String playerName = normalizePlayerName(event.getMenuTarget());
-		System.err.println("[Offline Translate] normalized target=\"" + playerName + "\" lastMessage=" + lastMessageByPlayer.get(playerName) + " known players=" + lastMessageByPlayer.keySet());
-		String message = lastMessageByPlayer.get(playerName);
-		if (message == null)
+		String widgetText = widget.getText();
+		if (widgetText == null || widgetText.isEmpty())
 		{
-			warn("No recent message from " + playerName + " to translate.");
 			return;
 		}
 
-		detectionExecutor.submit(() -> handleManualTranslate(playerName, message));
+		// The game fires one MenuEntryAdded per default option it adds for the hovered chat
+		// line (e.g. "Report", "Add friend") - all tied to the *same* line widget, since OSRS
+		// renders each chat line as a single text widget rather than separate name/message
+		// widgets. Dedup against whatever's already in the menu this hover so "Translate"
+		// doesn't get appended once per default option.
+		for (MenuEntry existing : client.getMenuEntries())
+		{
+			if (RIGHT_CLICK_OPTION.equals(existing.getOption()) && existing.getParam1() == widget.getId())
+			{
+				return;
+			}
+		}
+
+		ChatLineMatch match = findChatLine(widgetText);
+		if (match == null || !TRANSLATABLE_TYPES.contains(match.type))
+		{
+			return;
+		}
+
+		String localName = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : null;
+		if (localName != null && localName.equalsIgnoreCase(match.sender))
+		{
+			return;
+		}
+
+		String sender = match.sender;
+		String message = match.message;
+		lastMessageByPlayer.put(sender, message);
+
+		client.createMenuEntry(-1)
+			.setOption(RIGHT_CLICK_OPTION)
+			.setTarget(entry.getTarget())
+			.setType(MenuAction.RUNELITE)
+			.setParam0(event.getActionParam0())
+			.setParam1(widget.getId())
+			.onClick(e -> {
+				System.err.println("[Offline Translate] chat line \"Translate\" clicked: sender=" + sender + " message=\"" + message + "\"");
+				detectionExecutor.submit(() -> handleManualTranslate(sender, message));
+			});
+	}
+
+	/**
+	 * Correlates the hovered chat line widget back to the live {@link MessageNode} it renders,
+	 * by matching rendered text content rather than by index - OSRS doesn't expose name/message
+	 * as separate widgets per line (it's one text widget for the whole line, with the game's own
+	 * script deciding internally whether a click landed on the name portion), and matching by
+	 * widget child index against {@link Client#getChatLineMap()} would require assumptions about
+	 * cross-channel line ordering for the combined "All" chat view that aren't safe to guess at
+	 * blind. Matching by content sidesteps that: whatever text is actually showing is compared
+	 * against every currently-buffered message, tag-stripped on both sides.
+	 */
+	private ChatLineMatch findChatLine(String widgetText)
+	{
+		String stripped = Text.removeTags(widgetText).trim();
+		for (ChatLineBuffer buffer : client.getChatLineMap().values())
+		{
+			for (MessageNode node : buffer.getLines())
+			{
+				if (node == null || node.getValue() == null)
+				{
+					continue;
+				}
+				String name = node.getName();
+				String candidate = (name == null || name.isEmpty())
+					? Text.removeTags(node.getValue())
+					: Text.removeTags(name) + ": " + Text.removeTags(node.getValue());
+				if (candidate.trim().equals(stripped))
+				{
+					return new ChatLineMatch(normalizePlayerName(name), node.getValue(), node.getType());
+				}
+			}
+		}
+		return null;
+	}
+
+	private static final class ChatLineMatch
+	{
+		final String sender;
+		final String message;
+		final ChatMessageType type;
+
+		ChatLineMatch(String sender, String message, ChatMessageType type)
+		{
+			this.sender = sender;
+			this.message = message;
+			this.type = type;
+		}
 	}
 
 	private void handleManualTranslate(String sender, String message)
@@ -295,7 +382,11 @@ public class ChatTranslationService
 		{
 			String translated = translationEngine.translate(message, detected, preferred);
 			System.err.println("[Offline Translate] logging to panel: sender=" + sender + " translated=\"" + translated + "\"");
-			panel.logTranslatedMessage(new TranslatedMessageEntry(sender, message, translated, detected));
+			// normalizePlayerName(), not the raw sender: the side panel is a plain Swing label,
+			// not the in-game chat widget, so it can't render OSRS's <img=N>/<col=...> chat tags
+			// - left raw, entries showed literal text like "<img=10>Optimism" instead of a clean
+			// name.
+			panel.logTranslatedMessage(new TranslatedMessageEntry(normalizePlayerName(sender), message, translated, detected));
 		}
 		catch (TranslationException e)
 		{
