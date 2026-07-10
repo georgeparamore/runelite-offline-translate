@@ -59,8 +59,20 @@ class LanguagePackRowPanel extends RoundedPanel
 
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 		setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
-		setMaximumSize(new Dimension(Integer.MAX_VALUE, getMaximumSize().height));
 		setAlignmentX(Component.LEFT_ALIGNMENT);
+		// No explicit setMaximumSize() here - this row's downstream BoxLayout.maximumLayoutSize()
+		// sums its (as-yet-nonexistent) children's max sizes as of *this* line, which is exactly
+		// (0, 0) for an empty container. Calling setMaximumSize(getMaximumSize()) at this point,
+		// as an earlier version of this did, stores that (0, 0) as a permanent explicit override
+		// that never gets recomputed even once real children are added - confirmed live and
+		// reproduced in isolation: the row's preferred height correctly grows once children
+		// exist, but its *maximum* height stays locked at the stale value from before they did,
+		// and BoxLayout clamps actual allocated height to the smaller of the two. That's what was
+		// silently squashing every pack row down to a sliver with no visible buttons. Leaving
+		// maximumSize unset lets BoxLayout compute it fresh from real children on every layout
+		// pass instead of caching a wrong answer from before they existed - and since this row
+		// only ever lives inside a scrollable list (no competing sibling ever needs to steal its
+		// leftover space), there was never a real need to cap it at all.
 
 		JLabel nameLabel = new JLabel(language.getDisplayName());
 		nameLabel.setIcon(new ImageIcon(FlagIconFactory.create(language, 16, 11)));

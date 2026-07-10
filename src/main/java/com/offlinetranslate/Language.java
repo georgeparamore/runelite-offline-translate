@@ -146,10 +146,21 @@ public enum Language
 		return null;
 	}
 
-	/** Used directly by Swing combo box rendering - without this override they'd show the raw enum constant name (e.g. "INDONESIAN") instead of a flag and proper display name. */
+	/**
+	 * Deliberately plain text, no flag emoji - this used to be {@code flagEmoji + "  " +
+	 * displayName}, but that only ever looked right inside this plugin's own side panel, which
+	 * has its own {@code LanguageComboBoxRenderer} drawing a real flag icon and calling {@link
+	 * #getDisplayName()} directly rather than relying on toString() at all. RuneLite's own
+	 * auto-generated plugin config screen (the wrench-icon settings panel every plugin gets for
+	 * free from its {@code @ConfigItem}s) builds its own combo boxes for enum-typed options using
+	 * the default renderer, which - like every other plain-Swing-text-rendering spot in this
+	 * plugin - can't reliably draw a multi-codepoint flag emoji character, and showed up there as
+	 * garbled text ("Inglish" instead of "English"), confirmed live. This plugin's own panel
+	 * doesn't call toString() for display purposes at all, so plain text here costs it nothing.
+	 */
 	@Override
 	public String toString()
 	{
-		return flagEmoji + "  " + displayName;
+		return displayName;
 	}
 }
