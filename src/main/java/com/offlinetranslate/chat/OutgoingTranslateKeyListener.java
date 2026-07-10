@@ -8,7 +8,6 @@ import com.offlinetranslate.model.PackStatus;
 import com.offlinetranslate.translate.TranslationEngine;
 import com.offlinetranslate.translate.TranslationException;
 import java.awt.event.KeyEvent;
-import java.util.Set;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -19,26 +18,22 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.input.KeyListener;
 
 /**
- * Rewrites what you typed before it's sent, when it starts with the configured translate
- * command (default {@code /t }): translates the rest of the line from your preferred language
- * into the current output language, in place, so what other players actually receive is the
- * translated text.
+ * Translates whatever you've currently typed in the chatbox, in place, when you press the
+ * configured hotkey (default Ctrl+T) - leaving it sitting in the input box for you to send
+ * yourself with a completely normal, untouched Enter press afterward.
  * <p>
- * <b>Status: experimental, unverified in a live client.</b> This works by mutating
- * {@link VarClientStr#CHATBOX_TYPED_TEXT} inside {@code keyPressed} for the Enter key, on the
- * assumption that RuneLite's key-listener chain runs before the game's own script-driven
- * "send chat message" handling reads that same variable for the same keystroke - which is how
- * other plugins that alter outgoing text are believed to work, but this hasn't been confirmed
- * against a running client here. Translation runs synchronously on the EDT (a few hundred ms
- * for a short line), which is a deliberate simplicity tradeoff, not an oversight - deferring it
- * asynchronously isn't an option since the var has to be mutated before this same keystroke's
- * send logic runs.
- * <p>
- * On failure (e.g. the needed language pack isn't downloaded), this deliberately does *not*
- * try to block the send via {@code event.consume()} - whether consuming actually prevents the
- * vanilla client from still sending is unverified, and getting that wrong would be worse than
- * the fallback here: strip the command prefix and send your original, untranslated text instead
- * of risking a garbled or duplicate send.
+ * <b>Why a separate hotkey instead of intercepting Enter:</b> an earlier version of this tried
+ * to rewrite {@link VarClientStr#CHATBOX_TYPED_TEXT} inside the Enter keypress handler itself,
+ * on the assumption that RuneLite's key-listener chain runs before the game's own script-driven
+ * send-message handling reads that same variable for the same keystroke. That was tested live
+ * and confirmed wrong: it corrupted the chatbox's send state outright (Enter would cycle
+ * between the "Press Enter to Chat" placeholder and the typed text, never actually sending -
+ * for *any* message, not just translated ones, while stuck). {@code setVarcStrValue} on this
+ * var is a legitimate, working mechanism - other RuneLite plugins rewrite it successfully (live
+ * swear filters, auto-capitalization) - but every one of those does it progressively as you
+ * type, never during the same keystroke that triggers a send. Decoupling translate (this
+ * hotkey) from send (an untouched Enter) follows that same working pattern instead of fighting
+ * it, and was the fix once the actual failure mode was understood rather than guessed at.
  */
 @Slf4j
 @Singleton
@@ -49,7 +44,6 @@ public class OutgoingTranslateKeyListener implements KeyListener
 	private final OfflineTranslateConfig config;
 	private final TranslationEngine translationEngine;
 	private final ModelManager modelManager;
-	private final Set<String> warnedAboutSlashPrefix = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
 	@Inject
 	public OutgoingTranslateKeyListener(Client client, ClientThread clientThread, OfflineTranslateConfig config, TranslationEngine translationEngine, ModelManager modelManager)
@@ -69,40 +63,17 @@ public class OutgoingTranslateKeyListener implements KeyListener
 	@Override
 	public void keyPressed(KeyEvent e)
 	{
-		if (e.getKeyCode() != KeyEvent.VK_ENTER)
+		if (!config.translateHotkey().matches(e))
 		{
 			return;
 		}
-
-		String prefix = config.translateCommand();
-		if (prefix == null || prefix.isEmpty())
-		{
-			return;
-		}
-		if (prefix.startsWith("/"))
-		{
-			// A leading '/' is reserved by the OSRS client itself to mean "start a PM to a
-			// player with this name" - it intercepts the keystrokes before this listener's
-			// mutated var would ever be read for sending, so a '/'-prefixed command can never
-			// actually work. Warn once per config value rather than silently doing nothing.
-			if (warnedAboutSlashPrefix.add(prefix))
-			{
-				warn("Translate command \"" + prefix + "\" starts with '/', which OSRS reserves for PMs - change it in the plugin config to something else (e.g. \"!t \").");
-			}
-			return;
-		}
+		// Consume so the hotkey combo (e.g. Ctrl+T) can't also register as ordinary chat input;
+		// harmless either way since Ctrl-modified keys don't normally produce printable chat
+		// text, but this makes that explicit rather than assumed.
+		e.consume();
 
 		String typed = client.getVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT);
-		// Case-insensitive: OSRS's own chatbox auto-capitalizes the first letter you type, so
-		// a lowercase-first prefix like "!t " arrives here as "!T " by the time Enter is
-		// pressed - a case-sensitive startsWith() silently never matches it.
-		if (typed == null || typed.length() < prefix.length() || !typed.regionMatches(true, 0, prefix, 0, prefix.length()))
-		{
-			return;
-		}
-
-		String argument = typed.substring(prefix.length()).trim();
-		if (argument.isEmpty())
+		if (typed == null || typed.trim().isEmpty())
 		{
 			return;
 		}
@@ -112,31 +83,27 @@ public class OutgoingTranslateKeyListener implements KeyListener
 
 		if (!packsReady(source, target))
 		{
-			warn("Missing language pack for " + source.getDisplayName() + " -> " + target.getDisplayName() + " - sending untranslated.");
-			client.setVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT, argument);
+			warn("Missing language pack for " + source.getDisplayName() + " -> " + target.getDisplayName() + " - nothing to translate yet.");
 			return;
 		}
 
-		// Never call the blocking translate() below unless both translators are already
-		// loaded in memory. First-time loading (ONNX sessions + native SentencePiece library)
-		// takes seconds, and doing that synchronously inside this keypress handler was
-		// confirmed live to corrupt the chatbox's send state rather than just being slow -
-		// the message would never actually send, cycling between the input placeholder and
-		// the typed text instead. Warm up in the background and send untranslated this once.
+		// Only ever call the blocking translate() below once both translators are already
+		// loaded in memory - first-time loading (ONNX sessions + native SentencePiece library)
+		// takes seconds. Since this hotkey isn't tied to sending, there's no urgency: leave the
+		// typed text untouched and warm up in the background instead of translating it now.
 		boolean sourceWarm = source.isEnglish() || translationEngine.isWarm(source, PackDirection.TO_ENGLISH);
 		boolean targetWarm = target.isEnglish() || translationEngine.isWarm(target, PackDirection.FROM_ENGLISH);
 		if (!sourceWarm || !targetWarm)
 		{
 			translationEngine.warmUp(source, PackDirection.TO_ENGLISH);
 			translationEngine.warmUp(target, PackDirection.FROM_ENGLISH);
-			warn("Loading the translator for the first time - sending untranslated. Try again in a few seconds.");
-			client.setVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT, argument);
+			warn("Loading the translator for the first time - try the hotkey again in a few seconds.");
 			return;
 		}
 
 		try
 		{
-			String translated = translationEngine.translate(argument, source, target);
+			String translated = translationEngine.translate(typed, source, target);
 			client.setVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT, translated);
 		}
 		catch (TranslationException ex)
@@ -148,8 +115,7 @@ public class OutgoingTranslateKeyListener implements KeyListener
 			// entirely so it's visible in the terminal regardless.
 			System.err.println("[Offline Translate] Outgoing translation failed:");
 			ex.printStackTrace();
-			warn("Translation failed - sending untranslated.");
-			client.setVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT, argument);
+			warn("Translation failed - see console for details.");
 		}
 	}
 

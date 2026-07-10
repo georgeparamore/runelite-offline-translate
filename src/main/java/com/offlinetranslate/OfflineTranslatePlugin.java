@@ -79,20 +79,15 @@ public class OfflineTranslatePlugin extends Plugin
 
 		eventBus.register(chatTranslationService);
 
-		// Outgoing /t translation (OutgoingTranslateKeyListener) is disabled for now: two
-		// rounds of fixes (avoiding the '/' PM collision, case-insensitive prefix matching,
-		// never blocking on a cold load) all failed to stop it from corrupting the chatbox's
-		// own send state on a real client - confirmed live, not just theorized. Mutating
-		// VarClientStr.CHATBOX_TYPED_TEXT from a KeyListener on Enter does not behave the way
-		// this was built assuming it would, and it's actively harmful (breaks sending any
-		// message, not just translated ones) rather than just non-functional, so it's not
-		// safe to leave enabled while unresolved. Everything else - side panel, incoming
-		// detection/translation, flag icons - doesn't touch chat input and is unaffected.
-		// keyManager.registerKeyListener(outgoingTranslateKeyListener);
+		// Re-enabled with a redesigned mechanism: translate-in-place on a dedicated hotkey
+		// (default Ctrl+T), completely decoupled from Enter/sending. The earlier version tried
+		// to rewrite the chatbox text during the Enter keypress itself and was confirmed live
+		// to corrupt the client's send state - see OutgoingTranslateKeyListener's class javadoc
+		// for the full reasoning on why this approach avoids that failure mode.
+		keyManager.registerKeyListener(outgoingTranslateKeyListener);
 
-		// Warm up whatever's currently configured so incoming translation (still enabled) is
-		// fast on first use - warmUp() itself is a no-op if the pack isn't downloaded yet or
-		// is already loaded.
+		// Warm up whatever's currently configured so translation is fast on first use -
+		// warmUp() itself is a no-op if the pack isn't downloaded yet or is already loaded.
 		translationEngine.warmUp(config.preferredLanguage(), PackDirection.TO_ENGLISH);
 		translationEngine.warmUp(config.outputLanguage(), PackDirection.FROM_ENGLISH);
 	}

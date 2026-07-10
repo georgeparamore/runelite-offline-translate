@@ -11,10 +11,10 @@ download is fetching model weights, not translating your (or anyone else's) mess
   language badge when it differs from your preferred language.
 - **Logs translations** of detected foreign messages to the side panel (sender, original text,
   translated text).
-- **`/t <message>`** ~~translates what you type~~ **currently disabled** - see Status below.
-  The intent: translate what you type from your preferred language into the current output
-  language before it's sent, so the other player sees it in their language, with the output
-  language auto-updating to match whoever last spoke a different language to you.
+- **Translate hotkey (default Ctrl+T)** - type your message normally, press the hotkey to
+  translate it in place from your preferred language into the current output language, then
+  send it yourself with a completely ordinary Enter press. The output language auto-updates to
+  match whoever last spoke a different language to you.
 - **Downloadable language packs**, managed from the side panel, with a prompt to download a
   pack when auto-detect hits a language you don't have yet.
 
@@ -93,20 +93,28 @@ issues are the most likely thing to show up if you add a new language or swap mo
    plugin startup, right after a pack finishes downloading, and when you change your
    preferred/output language in the panel, so the cold case is rare in practice.
 
-**Disabled pending a redesign - `/t`/`!t` outgoing translation:**
-Even after fixing the `/` collision, the case-sensitivity bug, and the cold-load blocking above,
-live testing showed the chatbox's send state still got corrupted - Enter would cycle between
-the "Press Enter to Chat" placeholder and the typed text, with the message never actually
-sending, for *any* message (not just `!t` ones) while stuck. Three fixes in a row failing to
-resolve it means the core assumption was wrong, not just the timing: mutating
-`VarClientStr.CHATBOX_TYPED_TEXT` from a `KeyListener` on Enter and hoping the game reads the
-mutated value when it processes that same keypress for sending does not behave the way this was
-built expecting. `OutgoingTranslateKeyListener` is left in the codebase but **not registered**
-in `OfflineTranslatePlugin.startUp()` (commented out) until there's a mechanism verified not to
-break normal chat. Everything else - side panel, incoming detection/translation, flag icons -
-doesn't touch chat input and is unaffected.
+8. **Redesigned outgoing translation entirely, after the `/t`/`!t`-on-Enter approach was
+   confirmed to corrupt chat sending three fixes in a row.** The core assumption behind it -
+   that rewriting `VarClientStr.CHATBOX_TYPED_TEXT` inside the *same* keypress that triggers
+   the game's own send logic would just substitute the text - turned out to be wrong, not
+   mistimed: it broke the chatbox's send state outright (Enter cycling between the placeholder
+   and the typed text, nothing ever sending, for any message while stuck). The fix came from
+   checking how [RuneLingual](https://github.com/IaKee/RuneLingual-Plugin) - a plugin that has
+   real, working live translation - actually does it: it never touches outgoing packets at
+   all, only rewrites displayed text locally after a message already exists as a `MessageNode`
+   (the same safe pattern this plugin already used for *incoming* translation). Other RuneLite
+   plugins that do rewrite `CHATBOX_TYPED_TEXT` successfully (live swear filters,
+   auto-capitalization) all do it progressively as you type, never during the send keystroke
+   itself. So outgoing translation here is now **a dedicated hotkey (default Ctrl+T) that
+   translates the chatbox text in place, completely decoupled from Enter** - you translate,
+   look at the result, then send it yourself with an entirely untouched, normal Enter press.
+   This still changes what's actually transmitted (unlike RuneLingual's local-only approach),
+   it just no longer shares a keystroke with the send action.
 
 **Not yet verified - confirm on your own client:**
+- The redesigned translate hotkey (default Ctrl+T, `OutgoingTranslateKeyListener`) - does it
+  correctly rewrite the chatbox text without disturbing it otherwise, and does a subsequent
+  normal Enter press send the translated text cleanly?
 - Flag-icon rendering in real chat (`ChatIconManager` wiring) and the side panel's live
   behavior.
 - Translation quality on further languages/sentences - greedy decoding (not beam search) was a

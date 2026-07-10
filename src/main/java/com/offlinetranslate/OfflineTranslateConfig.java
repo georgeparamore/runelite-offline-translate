@@ -1,8 +1,11 @@
 package com.offlinetranslate;
 
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.Keybind;
 
 @ConfigGroup(OfflineTranslateConfig.GROUP)
 public interface OfflineTranslateConfig extends Config
@@ -54,14 +57,14 @@ public interface OfflineTranslateConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "translateCommand",
-		name = "Translate command",
-		description = "Chat prefix that translates the rest of your typed message from your preferred language into the output language before sending. Must NOT start with '/' - OSRS's own client reserves a leading '/' to mean 'switch to a PM with this player name', so a '/'-prefixed command gets swallowed by that before this plugin ever sees it. Experimental - see README.",
+		keyName = "translateHotkey",
+		name = "Translate hotkey",
+		description = "Type your message normally, then press this to translate it in place (from your preferred language into the output language) before you send it yourself with a normal Enter press. Deliberately a separate key from Enter - rewriting the chatbox text during the same keypress that sends it was tried and confirmed to corrupt the client's send state rather than translate anything.",
 		position = 4
 	)
-	default String translateCommand()
+	default Keybind translateHotkey()
 	{
-		return "!t ";
+		return new Keybind(KeyEvent.VK_T, InputEvent.CTRL_DOWN_MASK);
 	}
 
 	@ConfigItem(
