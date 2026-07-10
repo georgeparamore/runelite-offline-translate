@@ -38,6 +38,7 @@ public class ModelManager
 		"generation_config.json",
 		"tokenizer.json",
 		"tokenizer_config.json",
+		"vocab.json",
 		"source.spm",
 		"target.spm",
 		"onnx/encoder_model_quantized.onnx",

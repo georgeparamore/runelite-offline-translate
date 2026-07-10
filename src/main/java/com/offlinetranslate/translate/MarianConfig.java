@@ -3,8 +3,10 @@ package com.offlinetranslate.translate;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 
 /**
  * The handful of fields we need out of a MarianMT {@code config.json}. Values vary per
@@ -36,7 +38,7 @@ class MarianConfig
 
 	static MarianConfig load(File configJson) throws IOException
 	{
-		try (FileReader reader = new FileReader(configJson))
+		try (InputStreamReader reader = new InputStreamReader(Files.newInputStream(configJson.toPath()), StandardCharsets.UTF_8))
 		{
 			JsonObject obj = new Gson().fromJson(reader, JsonObject.class);
 			return new MarianConfig(

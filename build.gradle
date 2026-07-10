@@ -48,6 +48,14 @@ if (org.gradle.internal.os.OperatingSystem.current().isMacOsX())
     runeliteJvmArgs += ['--add-exports', 'java.desktop/com.apple.eawt=ALL-UNNAMED']
 }
 
+tasks.register('smokeTest', JavaExec) {
+    group = 'verification'
+    description = 'Downloads a real language pack and runs translation directly, no RuneLite client needed.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.offlinetranslate.StandaloneTranslationSmokeTest'
+    standardInput = System.in
+}
+
 tasks.register('runOfflineTranslate', JavaExec) {
     group = 'runelite'
     description = 'Launches RuneLite locally with the Offline Translate plugin registered.'

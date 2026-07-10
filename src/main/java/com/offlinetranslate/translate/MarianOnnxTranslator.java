@@ -7,6 +7,7 @@ import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
 import java.io.File;
 import java.io.IOException;
+import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +39,7 @@ class MarianOnnxTranslator implements AutoCloseable
 	private final SpTokenizer sourceTokenizer;
 	private final SpTokenizer targetTokenizer;
 	private final MarianConfig config;
+	private final MarianVocab vocab;
 
 	MarianOnnxTranslator(File packDir) throws TranslationException
 	{
@@ -50,6 +52,7 @@ class MarianOnnxTranslator implements AutoCloseable
 			this.sourceTokenizer = new SpTokenizer(new File(packDir, "source.spm").toPath());
 			this.targetTokenizer = new SpTokenizer(new File(packDir, "target.spm").toPath());
 			this.config = MarianConfig.load(new File(packDir, "config.json"));
+			this.vocab = MarianVocab.load(new File(packDir, "vocab.json"));
 		}
 		catch (OrtException | IOException e)
 		{
@@ -61,17 +64,20 @@ class MarianOnnxTranslator implements AutoCloseable
 	{
 		try
 		{
-			int[] sourceIds = sourceTokenizer.getProcessor().encode(text);
-			if (sourceIds.length > MAX_INPUT_TOKENS - 1)
+			// The .spm files only do piece *segmentation* here - SpProcessor.encode() would
+			// return each file's own internal SentencePiece piece-ids, which are a different
+			// numbering than the model's actual vocabulary (confirmed empirically: e.g. for
+			// opus-mt-es-en, source.spm's own id for the piece "▁hola" is 10120, but
+			// vocab.json - the id space the ONNX embedding/output layers actually use - has it
+			// at 22088). The real ids have to come from vocab.json.
+			String[] pieces = sourceTokenizer.getProcessor().tokenize(text);
+			int tokenCount = Math.min(pieces.length, MAX_INPUT_TOKENS - 1);
+			long[] inputIds = new long[tokenCount + 1];
+			for (int i = 0; i < tokenCount; i++)
 			{
-				sourceIds = java.util.Arrays.copyOf(sourceIds, MAX_INPUT_TOKENS - 1);
+				inputIds[i] = vocab.idFor(pieces[i]);
 			}
-			long[] inputIds = new long[sourceIds.length + 1];
-			for (int i = 0; i < sourceIds.length; i++)
-			{
-				inputIds[i] = sourceIds[i];
-			}
-			inputIds[sourceIds.length] = config.eosTokenId;
+			inputIds[tokenCount] = config.eosTokenId;
 			int srcLen = inputIds.length;
 
 			long[] attentionMask = new long[srcLen];
@@ -113,7 +119,11 @@ class MarianOnnxTranslator implements AutoCloseable
 		int heads = config.attentionHeads;
 		int headDim = config.headDim();
 
-		// past_key_values for step 0: zero-length sequence dimension (no cache yet).
+		// past_key_values for step 0: zero-length sequence dimension (no cache yet). Note this
+		// can't be built via OnnxTensor.createTensor(env, Object) - its Java-array shape
+		// inference rejects any zero-length dimension ("Supplied array has a zero dimension"),
+		// even though ONNX Runtime itself supports zero-size tensors fine. tensor4f() below
+		// goes through the explicit-shape FloatBuffer overload instead, which has no such check.
 		float[][][][] emptyDecoderCache = new float[1][heads][0][headDim];
 		float[][][][] emptyEncoderCache = new float[1][heads][0][headDim];
 		float[][][][][] decoderKeyCache = new float[layers][][][][];
@@ -128,7 +138,6 @@ class MarianOnnxTranslator implements AutoCloseable
 			encoderValueCache[i] = emptyEncoderCache;
 		}
 
-		StringBuilder outputPieces = new StringBuilder();
 		int[] generatedIds = new int[MAX_NEW_TOKENS];
 		int generatedCount = 0;
 		long nextInputToken = config.decoderStartTokenId;
@@ -145,10 +154,10 @@ class MarianOnnxTranslator implements AutoCloseable
 				inputs.put("use_cache_branch", OnnxTensor.createTensor(env, new boolean[]{useCache}));
 				for (int layer = 0; layer < layers; layer++)
 				{
-					inputs.put("past_key_values." + layer + ".decoder.key", OnnxTensor.createTensor(env, decoderKeyCache[layer]));
-					inputs.put("past_key_values." + layer + ".decoder.value", OnnxTensor.createTensor(env, decoderValueCache[layer]));
-					inputs.put("past_key_values." + layer + ".encoder.key", OnnxTensor.createTensor(env, encoderKeyCache[layer]));
-					inputs.put("past_key_values." + layer + ".encoder.value", OnnxTensor.createTensor(env, encoderValueCache[layer]));
+					inputs.put("past_key_values." + layer + ".decoder.key", tensor4f(decoderKeyCache[layer], heads, headDim));
+					inputs.put("past_key_values." + layer + ".decoder.value", tensor4f(decoderValueCache[layer], heads, headDim));
+					inputs.put("past_key_values." + layer + ".encoder.key", tensor4f(encoderKeyCache[layer], heads, headDim));
+					inputs.put("past_key_values." + layer + ".encoder.value", tensor4f(encoderValueCache[layer], heads, headDim));
 				}
 
 				try (OrtSession.Result result = decoderSession.run(inputs))
@@ -160,8 +169,18 @@ class MarianOnnxTranslator implements AutoCloseable
 					{
 						decoderKeyCache[layer] = (float[][][][]) result.get("present." + layer + ".decoder.key").get().getValue();
 						decoderValueCache[layer] = (float[][][][]) result.get("present." + layer + ".decoder.value").get().getValue();
-						encoderKeyCache[layer] = (float[][][][]) result.get("present." + layer + ".encoder.key").get().getValue();
-						encoderValueCache[layer] = (float[][][][]) result.get("present." + layer + ".encoder.value").get().getValue();
+						// present.N.encoder.* is only meaningfully populated on the first
+						// (use_cache_branch=false) call - the cached branch returns an empty
+						// placeholder tensor there rather than recomputing or passing through
+						// the real cross-attention cache (confirmed empirically: it comes back
+						// with a zero-length batch dimension on cached steps). So the encoder
+						// K/V captured from step 0 has to be threaded forward unchanged on every
+						// later step instead of being refreshed from each step's output.
+						if (!useCache)
+						{
+							encoderKeyCache[layer] = (float[][][][]) result.get("present." + layer + ".encoder.key").get().getValue();
+							encoderValueCache[layer] = (float[][][][]) result.get("present." + layer + ".encoder.value").get().getValue();
+						}
 					}
 
 					if (nextId == config.eosTokenId)
@@ -180,8 +199,33 @@ class MarianOnnxTranslator implements AutoCloseable
 			}
 		}
 
-		int[] finalIds = java.util.Arrays.copyOf(generatedIds, generatedCount);
-		return targetTokenizer.getProcessor().decode(finalIds);
+		// Same vocab.json indirection as encoding, in reverse: map generated vocab ids back to
+		// piece strings, then let target.spm's own detokenizer handle "▁"-marker spacing/
+		// punctuation-attachment rules - buildSentence() takes piece strings, not ids, so it's
+		// unaffected by the id-space mismatch that broke naive decode(ids).
+		String[] outputPieces = new String[generatedCount];
+		for (int i = 0; i < generatedCount; i++)
+		{
+			outputPieces[i] = vocab.pieceFor(generatedIds[i]);
+		}
+		return targetTokenizer.getProcessor().buildSentence(outputPieces);
+	}
+
+	/** Builds a [1, heads, seqLen, headDim] float tensor via the explicit-shape buffer API, which (unlike the Object-array factory) tolerates seqLen == 0. */
+	private OnnxTensor tensor4f(float[][][][] data, int heads, int headDim) throws OrtException
+	{
+		int seqLen = data[0][0].length;
+		long[] shape = {1, heads, seqLen, headDim};
+		FloatBuffer buffer = FloatBuffer.allocate(heads * seqLen * headDim);
+		for (float[][] head : data[0])
+		{
+			for (float[] position : head)
+			{
+				buffer.put(position);
+			}
+		}
+		buffer.rewind();
+		return OnnxTensor.createTensor(env, buffer, shape);
 	}
 
 	private static long argmaxExcluding(float[] logits, int excludedId)
