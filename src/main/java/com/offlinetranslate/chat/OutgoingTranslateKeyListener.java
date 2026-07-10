@@ -136,12 +136,21 @@ public class OutgoingTranslateKeyListener implements KeyListener
 			// client.refreshChat() (used for the chat *log*, and what an earlier version of
 			// this called here) does not refresh the input line - confirmed live, the box kept
 			// showing the old text even though the underlying var and the eventual send were
-			// both correct. ScriptID.CHAT_TEXT_INPUT_REBUILD is the client's own real
-			// "redraw the chat input widget" script (used, per its javadoc, for exactly this
-			// kind of programmatic text-input change), which is what was actually missing.
+			// both correct. ScriptID.CHAT_TEXT_INPUT_REBUILD fixed the PM input widget
+			// (confirmed live) but not the main public/clan/FC chatbox - they're evidently
+			// different widgets with different rebuild scripts. BUILD_CHATBOX is RuneLite's
+			// documented "rebuild the chatbox" script, used here for the CHATBOX_TYPED_TEXT
+			// case specifically rather than assuming one script covers both.
 			clientThread.invoke(() -> {
 				client.setVarcStrValue(finalSourceVar, translated);
-				client.runScript(ScriptID.CHAT_TEXT_INPUT_REBUILD, "");
+				if (finalSourceVar == VarClientStr.INPUT_TEXT)
+				{
+					client.runScript(ScriptID.CHAT_TEXT_INPUT_REBUILD, "");
+				}
+				else
+				{
+					client.runScript(ScriptID.BUILD_CHATBOX);
+				}
 			});
 		}
 		catch (TranslationException ex)
