@@ -49,6 +49,14 @@ public class OfflineTranslatePanel extends PluginPanel
 		setLayout(new BorderLayout());
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
 
+		// Everything below - selectors, checkboxes, the pack list, and the translated-message
+		// log - is built as one continuous BoxLayout column ("top") and then the *entire* column
+		// is wrapped in a single outer JScrollPane. RuneLite's sidebar does not itself wrap
+		// plugin panels in a scroll container, so without this, content that grows taller than
+		// the visible sidebar area (as this panel does once the pack list and log are both
+		// present) is simply unreachable - not just "needs scrolling to see", but with literally
+		// no scrollbar anywhere that reaches it. Confirmed live: the log section was being logged
+		// to correctly every time but was permanently off-screen with nothing to scroll.
 		JPanel top = new JPanel();
 		top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
 		top.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -115,19 +123,24 @@ public class OfflineTranslatePanel extends PluginPanel
 		packScroll.setBorder(BorderFactory.createLineBorder(ColorScheme.DARK_GRAY_COLOR));
 		top.add(packScroll);
 
-		add(top, BorderLayout.NORTH);
+		top.add(sectionDivider());
+		top.add(sectionLabel("Translated messages"));
+		top.add(javax.swing.Box.createVerticalStrut(3));
+		// logPanel has its own internal JScrollPane (see TranslatedMessageLogPanel) with no
+		// fixed size of its own, so inside this outer BoxLayout column it needs an explicit
+		// height or it collapses to near-zero - same reasoning as packScroll's fixed height
+		// above. Kept tall enough to be genuinely useful once you scroll the outer pane down to
+		// it, rather than a token sliver.
+		logPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+		logPanel.setPreferredSize(new Dimension(0, 300));
+		logPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 300));
+		top.add(logPanel);
 
-		JPanel logSection = new JPanel(new BorderLayout());
-		logSection.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		logSection.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
-		JPanel logHeader = new JPanel();
-		logHeader.setLayout(new BoxLayout(logHeader, BoxLayout.Y_AXIS));
-		logHeader.setOpaque(false);
-		logHeader.add(sectionDivider());
-		logHeader.add(sectionLabel("Translated messages"));
-		logSection.add(logHeader, BorderLayout.NORTH);
-		logSection.add(logPanel, BorderLayout.CENTER);
-		add(logSection, BorderLayout.CENTER);
+		JScrollPane outerScroll = new JScrollPane(top);
+		outerScroll.setBorder(BorderFactory.createEmptyBorder());
+		outerScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+		outerScroll.getVerticalScrollBar().setUnitIncrement(16);
+		add(outerScroll, BorderLayout.CENTER);
 	}
 
 	private static void stretchWidth(javax.swing.JComponent component)
