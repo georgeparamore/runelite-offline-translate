@@ -7,12 +7,14 @@ import com.offlinetranslate.model.PackDirection;
 import com.offlinetranslate.translate.TranslationEngine;
 import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.GridLayout;
+import java.awt.Font;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
-import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
@@ -20,8 +22,10 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.SwingUtilities;
+import net.runelite.api.ChatMessageType;
+import net.runelite.api.Client;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
-import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 
@@ -43,6 +47,8 @@ public class OfflineTranslatePanel extends PluginPanel
 	private final OfflineTranslateConfig config;
 	private final ModelManager modelManager;
 	private final TranslationEngine translationEngine;
+	private final Client client;
+	private final ClientThread clientThread;
 
 	private final JComboBox<Language> preferredLanguageBox;
 	private final JComboBox<Language> outputLanguageBox;
@@ -53,12 +59,15 @@ public class OfflineTranslatePanel extends PluginPanel
 	private final JPanel packListPanel = new JPanel();
 
 	@Inject
-	public OfflineTranslatePanel(ConfigManager configManager, OfflineTranslateConfig config, ModelManager modelManager, TranslationEngine translationEngine)
+	public OfflineTranslatePanel(ConfigManager configManager, OfflineTranslateConfig config, ModelManager modelManager,
+		TranslationEngine translationEngine, Client client, ClientThread clientThread)
 	{
 		this.configManager = configManager;
 		this.config = config;
 		this.modelManager = modelManager;
 		this.translationEngine = translationEngine;
+		this.client = client;
+		this.clientThread = clientThread;
 
 		// RuneLite's own PluginPanel (our superclass) already wraps every plugin panel in its
 		// own outer JScrollPane before adding it to the sidebar (see PluginPanel.java: this gets
@@ -69,7 +78,7 @@ public class OfflineTranslatePanel extends PluginPanel
 		// does for every other plugin's side panel.
 		JPanel top = this;
 		top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
-		top.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		top.setBackground(PanelColors.BACKGROUND);
 		top.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
 		top.add(sectionHeader("Your language"));
@@ -80,10 +89,10 @@ public class OfflineTranslatePanel extends PluginPanel
 			configManager.setConfiguration(OfflineTranslateConfig.GROUP, "preferredLanguage", selected);
 			translationEngine.warmUp(selected, PackDirection.TO_ENGLISH);
 		});
-		stretchWidth(preferredLanguageBox);
+		styleComboBox(preferredLanguageBox);
 		top.add(preferredLanguageBox);
 
-		top.add(javax.swing.Box.createVerticalStrut(6));
+		top.add(javax.swing.Box.createVerticalStrut(8));
 		autoDetectBox = new JCheckBox("Auto-detect chat language", config.autoDetect());
 		styleCheckbox(autoDetectBox);
 		autoDetectBox.addActionListener(e -> configManager.setConfiguration(
@@ -97,7 +106,7 @@ public class OfflineTranslatePanel extends PluginPanel
 			OfflineTranslateConfig.GROUP, "showFlagsInChat", showFlagsBox.isSelected()));
 		top.add(showFlagsBox);
 
-		top.add(javax.swing.Box.createVerticalStrut(14));
+		top.add(javax.swing.Box.createVerticalStrut(18));
 		top.add(sectionHeader("Output language (for the translate hotkey)"));
 		outputLanguageBox = new JComboBox<>(java.util.Arrays.stream(Language.values())
 			.filter(Language::supportsTranslationFromEnglish)
@@ -108,53 +117,42 @@ public class OfflineTranslatePanel extends PluginPanel
 			configManager.setConfiguration(OfflineTranslateConfig.GROUP, "outputLanguage", selected);
 			translationEngine.warmUp(selected, PackDirection.FROM_ENGLISH);
 		});
-		stretchWidth(outputLanguageBox);
+		styleComboBox(outputLanguageBox);
 		top.add(outputLanguageBox);
 
-		top.add(javax.swing.Box.createVerticalStrut(6));
+		top.add(javax.swing.Box.createVerticalStrut(8));
 		autoUpdateOutputBox = new JCheckBox("Auto-update to last speaker's language", config.autoUpdateOutputLanguage());
 		styleCheckbox(autoUpdateOutputBox);
 		autoUpdateOutputBox.addActionListener(e -> configManager.setConfiguration(
 			OfflineTranslateConfig.GROUP, "autoUpdateOutputLanguage", autoUpdateOutputBox.isSelected()));
 		top.add(autoUpdateOutputBox);
 
-		top.add(javax.swing.Box.createVerticalStrut(14));
-		top.add(sectionHeader("Language packs"));
+		top.add(javax.swing.Box.createVerticalStrut(18));
+		top.add(sectionHeaderWithAction("Installed language packs", "Download all", this::downloadAllMissing));
 
-		JButton downloadAllButton = new JButton("Download all");
-		downloadAllButton.setFont(FontManager.getRunescapeSmallFont());
-		downloadAllButton.setFocusPainted(false);
-		downloadAllButton.setAlignmentX(Component.LEFT_ALIGNMENT);
-		downloadAllButton.addActionListener(e -> {
-			for (java.awt.Component c : packListPanel.getComponents())
-			{
-				if (c instanceof LanguagePackRowPanel)
-				{
-					((LanguagePackRowPanel) c).downloadMissing();
-				}
-			}
-		});
-		top.add(downloadAllButton);
-		top.add(javax.swing.Box.createVerticalStrut(6));
-
-		packListPanel.setLayout(new GridLayout(0, 1));
-		packListPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		packListPanel.setLayout(new BoxLayout(packListPanel, BoxLayout.Y_AXIS));
+		packListPanel.setOpaque(false);
 		for (Language language : Language.values())
 		{
 			if (language.isEnglish())
 			{
 				continue;
 			}
-			packListPanel.add(new LanguagePackRowPanel(modelManager, translationEngine, language));
+			LanguagePackRowPanel row = new LanguagePackRowPanel(modelManager, translationEngine, language, this::notifyGameChat);
+			row.setAlignmentX(Component.LEFT_ALIGNMENT);
+			packListPanel.add(row);
+			packListPanel.add(javax.swing.Box.createVerticalStrut(6));
 		}
 		JScrollPane packScroll = new JScrollPane(packListPanel);
-		packScroll.setPreferredSize(new Dimension(0, 220));
-		packScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 220));
+		packScroll.setPreferredSize(new Dimension(0, 260));
+		packScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 260));
 		packScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
-		packScroll.setBorder(BorderFactory.createLineBorder(ColorScheme.DARKER_GRAY_COLOR.darker()));
+		packScroll.setBorder(BorderFactory.createEmptyBorder());
+		packScroll.setOpaque(false);
+		packScroll.getViewport().setOpaque(false);
 		top.add(packScroll);
 
-		top.add(javax.swing.Box.createVerticalStrut(14));
+		top.add(javax.swing.Box.createVerticalStrut(18));
 		top.add(sectionHeader("Translated messages"));
 		// logPanel has its own internal JScrollPane (see TranslatedMessageLogPanel) with no
 		// fixed size of its own, so inside this outer BoxLayout column it needs an explicit
@@ -168,51 +166,88 @@ public class OfflineTranslatePanel extends PluginPanel
 		top.add(logPanel);
 	}
 
-	private static void stretchWidth(javax.swing.JComponent component)
+	/** Same chat-message mechanism {@code ChatTranslationService.warn()} uses - lets pack-download/delete completions surface in-game without needing to watch the side panel. Safe to call off the EDT. */
+	private void notifyGameChat(String message)
 	{
-		component.setAlignmentX(Component.LEFT_ALIGNMENT);
-		component.setMaximumSize(new Dimension(Integer.MAX_VALUE, component.getPreferredSize().height));
+		clientThread.invoke(() -> client.addChatMessage(ChatMessageType.CONSOLE, "", "[Offline Translate] " + message, null));
+	}
+
+	private void downloadAllMissing()
+	{
+		List<CompletableFuture<Void>> started = new ArrayList<>();
+		for (Component c : packListPanel.getComponents())
+		{
+			if (c instanceof LanguagePackRowPanel)
+			{
+				CompletableFuture<Void> future = ((LanguagePackRowPanel) c).downloadMissing();
+				if (future != null)
+				{
+					started.add(future);
+				}
+			}
+		}
+		if (started.isEmpty())
+		{
+			return;
+		}
+		CompletableFuture.allOf(started.toArray(new CompletableFuture[0]))
+			.whenComplete((result, error) -> notifyGameChat("Finished downloading all language packs."));
+	}
+
+	private static void styleComboBox(JComboBox<Language> comboBox)
+	{
+		comboBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+		comboBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, comboBox.getPreferredSize().height));
+		comboBox.setBackground(PanelColors.CARD);
+		comboBox.setForeground(PanelColors.TEXT);
+		comboBox.setFont(FontManager.getRunescapeFont());
 	}
 
 	private static void styleCheckbox(JCheckBox checkbox)
 	{
 		checkbox.setOpaque(false);
-		checkbox.setForeground(ColorScheme.TEXT_COLOR);
+		checkbox.setForeground(PanelColors.TEXT_MUTED);
 		checkbox.setFont(FontManager.getRunescapeSmallFont());
 		checkbox.setAlignmentX(Component.LEFT_ALIGNMENT);
 		checkbox.setFocusPainted(false);
 	}
 
-	/**
-	 * A section title with a short accent-colored underline directly beneath it, instead of a
-	 * full-width gray divider bar - reads as a modern, compact heading rather than a slab of
-	 * empty space between sections.
-	 */
-	private static JPanel sectionHeader(String text)
+	/** A compact, muted-uppercase section title, matching a "settings group label" look rather than a heavy divider. */
+	private static JLabel sectionHeader(String text)
 	{
-		JPanel header = new JPanel();
-		header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
-		header.setOpaque(false);
-		header.setAlignmentX(Component.LEFT_ALIGNMENT);
-		header.setMaximumSize(new Dimension(Integer.MAX_VALUE, header.getMaximumSize().height));
-
-		JLabel label = new JLabel(text);
-		label.setFont(FontManager.getRunescapeBoldFont());
-		label.setForeground(ColorScheme.BRAND_ORANGE);
+		JLabel label = new JLabel(text.toUpperCase());
+		label.setFont(FontManager.getRunescapeSmallFont().deriveFont(Font.BOLD));
+		label.setForeground(PanelColors.TEXT_MUTED);
 		label.setAlignmentX(Component.LEFT_ALIGNMENT);
-		header.add(label);
+		label.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
+		return label;
+	}
 
-		header.add(javax.swing.Box.createVerticalStrut(3));
+	/** A section header with a small text action pinned to the right (e.g. "Download all"), for sections that need one. */
+	private static JPanel sectionHeaderWithAction(String text, String actionText, Runnable action)
+	{
+		JPanel row = new JPanel(new java.awt.BorderLayout());
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, row.getMaximumSize().height));
+		row.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
 
-		JPanel underline = new JPanel();
-		underline.setBackground(ColorScheme.BRAND_ORANGE);
-		underline.setAlignmentX(Component.LEFT_ALIGNMENT);
-		underline.setMaximumSize(new Dimension(28, 2));
-		underline.setPreferredSize(new Dimension(28, 2));
-		header.add(underline);
+		JLabel label = new JLabel(text.toUpperCase());
+		label.setFont(FontManager.getRunescapeSmallFont().deriveFont(Font.BOLD));
+		label.setForeground(PanelColors.TEXT_MUTED);
+		row.add(label, java.awt.BorderLayout.WEST);
 
-		header.add(javax.swing.Box.createVerticalStrut(6));
-		return header;
+		javax.swing.JButton actionButton = new javax.swing.JButton(actionText);
+		actionButton.setFont(FontManager.getRunescapeSmallFont());
+		actionButton.setForeground(PanelColors.ACCENT);
+		actionButton.setFocusPainted(false);
+		actionButton.setBorderPainted(false);
+		actionButton.setContentAreaFilled(false);
+		actionButton.setMargin(new java.awt.Insets(0, 0, 0, 0));
+		actionButton.addActionListener(e -> action.run());
+		row.add(actionButton, java.awt.BorderLayout.EAST);
+
+		return row;
 	}
 
 	/** Appends a translated incoming message to the side panel log. Safe to call off the EDT. */
@@ -252,6 +287,7 @@ public class OfflineTranslatePanel extends PluginPanel
 						if (error == null)
 						{
 							translationEngine.warmUp(language, direction);
+							notifyGameChat(language.getDisplayName() + " pack downloaded.");
 						}
 						refreshPackList();
 					});
@@ -262,7 +298,7 @@ public class OfflineTranslatePanel extends PluginPanel
 	private void refreshPackList()
 	{
 		SwingUtilities.invokeLater(() -> {
-			for (java.awt.Component c : packListPanel.getComponents())
+			for (Component c : packListPanel.getComponents())
 			{
 				if (c instanceof LanguagePackRowPanel)
 				{

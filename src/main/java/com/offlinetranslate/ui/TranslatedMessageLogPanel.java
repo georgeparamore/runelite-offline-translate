@@ -2,9 +2,13 @@ package com.offlinetranslate.ui;
 
 import com.offlinetranslate.chat.FlagIconFactory;
 import java.awt.BorderLayout;
-import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Font;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
@@ -13,15 +17,13 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.SwingConstants;
-import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 
 /** Scrollable log of incoming chat messages that have been translated for you. */
 class TranslatedMessageLogPanel extends JPanel
 {
 	private static final int MAX_ENTRIES = 50;
-	private static final Color CARD_BACKGROUND = new Color(0x2b, 0x2b, 0x2b);
-	private static final Color ACCENT = ColorScheme.BRAND_ORANGE;
+	private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault());
 
 	private final JPanel entriesPanel = new JPanel();
 	private final JLabel emptyLabel = new JLabel("No translated messages yet", SwingConstants.CENTER);
@@ -29,11 +31,14 @@ class TranslatedMessageLogPanel extends JPanel
 	TranslatedMessageLogPanel()
 	{
 		setLayout(new BorderLayout());
-		setBackground(ColorScheme.DARK_GRAY_COLOR);
+		setOpaque(false);
 
-		JButton clearButton = new JButton("Clear");
+		JButton clearButton = new JButton("🗑 Clear");
 		clearButton.setFont(FontManager.getRunescapeSmallFont());
+		clearButton.setForeground(PanelColors.TEXT_MUTED);
 		clearButton.setFocusPainted(false);
+		clearButton.setBorderPainted(false);
+		clearButton.setContentAreaFilled(false);
 		clearButton.setMargin(new java.awt.Insets(1, 6, 1, 6));
 		clearButton.addActionListener(e -> clear());
 
@@ -43,15 +48,17 @@ class TranslatedMessageLogPanel extends JPanel
 		add(headerRow, BorderLayout.NORTH);
 
 		entriesPanel.setLayout(new BoxLayout(entriesPanel, BoxLayout.Y_AXIS));
-		entriesPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		entriesPanel.setOpaque(false);
 
-		emptyLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		emptyLabel.setForeground(PanelColors.TEXT_MUTED);
 		emptyLabel.setFont(FontManager.getRunescapeSmallFont());
 		emptyLabel.setBorder(BorderFactory.createEmptyBorder(16, 0, 0, 0));
 		entriesPanel.add(emptyLabel);
 
 		JScrollPane scrollPane = new JScrollPane(entriesPanel);
 		scrollPane.setBorder(BorderFactory.createEmptyBorder());
+		scrollPane.setOpaque(false);
+		scrollPane.getViewport().setOpaque(false);
 		scrollPane.getVerticalScrollBar().setUnitIncrement(12);
 		add(scrollPane, BorderLayout.CENTER);
 	}
@@ -60,22 +67,17 @@ class TranslatedMessageLogPanel extends JPanel
 	{
 		entriesPanel.remove(emptyLabel);
 
-		// A colored left-edge accent bar (matched to the detected language's flag colors, via
-		// FlagIconFactory - drawn as real shapes rather than an emoji glyph, since plain Swing
-		// labels can't reliably render flag emoji either, same limitation as the in-chat sprite
-		// badge) instead of a plain background box, so entries read as distinct cards rather
-		// than a flat wall of text.
-		JPanel row = new JPanel(new BorderLayout(8, 2));
-		row.setBackground(CARD_BACKGROUND);
+		RoundedPanel row = new RoundedPanel(10, PanelColors.CARD);
+		row.setLayout(new BorderLayout(8, 2));
 		row.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createEmptyBorder(0, 0, 6, 0),
-			BorderFactory.createEmptyBorder(6, 8, 6, 8)));
-		row.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+			BorderFactory.createEmptyBorder(8, 10, 8, 10)));
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
 		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, row.getMaximumSize().height));
 
 		JLabel headerLabel = new JLabel(entry.getSender());
-		headerLabel.setForeground(ACCENT);
-		headerLabel.setFont(FontManager.getRunescapeSmallFont().deriveFont(java.awt.Font.BOLD));
+		headerLabel.setForeground(PanelColors.ACCENT);
+		headerLabel.setFont(FontManager.getRunescapeSmallFont().deriveFont(Font.BOLD));
 		if (entry.getDetectedLanguage() != null)
 		{
 			headerLabel.setIcon(new ImageIcon(FlagIconFactory.create(entry.getDetectedLanguage(), 16, 11)));
@@ -83,12 +85,21 @@ class TranslatedMessageLogPanel extends JPanel
 			headerLabel.setHorizontalTextPosition(SwingConstants.RIGHT);
 		}
 
+		JLabel timeLabel = new JLabel(TIME_FORMAT.format(Instant.ofEpochMilli(entry.getTimestampMillis())));
+		timeLabel.setForeground(PanelColors.TEXT_MUTED);
+		timeLabel.setFont(FontManager.getRunescapeSmallFont());
+
+		JPanel headerRow = new JPanel(new BorderLayout());
+		headerRow.setOpaque(false);
+		headerRow.add(headerLabel, BorderLayout.WEST);
+		headerRow.add(timeLabel, BorderLayout.EAST);
+
 		JLabel translatedLabel = new JLabel("<html><body style='width: 150px'>" + escape(entry.getTranslatedText()) + "</body></html>");
-		translatedLabel.setForeground(ColorScheme.TEXT_COLOR);
+		translatedLabel.setForeground(PanelColors.TEXT);
 		translatedLabel.setFont(FontManager.getRunescapeSmallFont());
 
 		JLabel originalLabel = new JLabel("<html><body style='width: 150px'>" + escape(entry.getOriginalText()) + "</body></html>");
-		originalLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		originalLabel.setForeground(PanelColors.TEXT_MUTED);
 		originalLabel.setFont(originalLabel.getFont().deriveFont(originalLabel.getFont().getSize2D() - 1f));
 		originalLabel.setBorder(BorderFactory.createEmptyBorder(3, 0, 0, 0));
 
@@ -98,11 +109,12 @@ class TranslatedMessageLogPanel extends JPanel
 		textPanel.add(translatedLabel);
 		textPanel.add(originalLabel);
 
-		row.add(headerLabel, BorderLayout.NORTH);
+		row.add(headerRow, BorderLayout.NORTH);
 		row.add(textPanel, BorderLayout.CENTER);
 
 		entriesPanel.add(row, 0);
-		while (entriesPanel.getComponentCount() > MAX_ENTRIES)
+		entriesPanel.add(javax.swing.Box.createVerticalStrut(6), 1);
+		while (entriesPanel.getComponentCount() > MAX_ENTRIES * 2)
 		{
 			entriesPanel.remove(entriesPanel.getComponentCount() - 1);
 		}

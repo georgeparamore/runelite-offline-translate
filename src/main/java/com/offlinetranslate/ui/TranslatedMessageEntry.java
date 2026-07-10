@@ -8,6 +8,8 @@ public class TranslatedMessageEntry
 	private final String originalText;
 	private final String translatedText;
 	private final Language detectedLanguage;
+	/** Captured here rather than passed in, so every call site gets a timestamp for free. */
+	private final long timestampMillis = System.currentTimeMillis();
 
 	public TranslatedMessageEntry(String sender, String originalText, String translatedText, Language detectedLanguage)
 	{
@@ -15,6 +17,11 @@ public class TranslatedMessageEntry
 		this.originalText = originalText;
 		this.translatedText = translatedText;
 		this.detectedLanguage = detectedLanguage;
+	}
+
+	public long getTimestampMillis()
+	{
+		return timestampMillis;
 	}
 
 	public String getSender()
