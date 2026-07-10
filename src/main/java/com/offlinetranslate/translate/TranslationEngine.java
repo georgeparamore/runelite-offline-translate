@@ -6,6 +6,8 @@ import com.offlinetranslate.model.PackDirection;
 import com.offlinetranslate.model.PackStatus;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -21,11 +23,49 @@ public class TranslationEngine
 {
 	private final ModelManager modelManager;
 	private final Map<String, MarianOnnxTranslator> loaded = new ConcurrentHashMap<>();
+	private final ExecutorService warmUpExecutor = Executors.newSingleThreadExecutor(r -> {
+		Thread t = new Thread(r, "offline-translate-warmup");
+		t.setDaemon(true);
+		return t;
+	});
 
 	@Inject
 	public TranslationEngine(ModelManager modelManager)
 	{
 		this.modelManager = modelManager;
+	}
+
+	/**
+	 * True if this (language, direction) is already loaded and ready to translate near-
+	 * instantly. First-time loading (ONNX sessions + native SentencePiece library) takes
+	 * seconds, not milliseconds - callers on a latency-sensitive path (e.g. a keypress handler
+	 * that has to finish before the game's own input handling continues) should check this and
+	 * use {@link #warmUp} instead of calling translate() cold. Confirmed the hard way: doing a
+	 * multi-second synchronous translate() inside a chat keypress handler corrupted the OSRS
+	 * client's own send state rather than just being slow.
+	 */
+	public boolean isWarm(Language language, PackDirection direction)
+	{
+		return language.isEnglish() || loaded.containsKey(language.getCode() + ":" + direction);
+	}
+
+	/** Loads a (language, direction) translator on a background thread, if its pack is downloaded and it isn't already loaded. Fire-and-forget - check {@link #isWarm} to know when it's done. */
+	public void warmUp(Language language, PackDirection direction)
+	{
+		if (language.isEnglish() || isWarm(language, direction) || modelManager.getStatus(language, direction) != PackStatus.READY)
+		{
+			return;
+		}
+		warmUpExecutor.submit(() -> {
+			try
+			{
+				translate("warm up", language, direction);
+			}
+			catch (TranslationException e)
+			{
+				log.debug("Warm-up failed for {} ({})", language, direction, e);
+			}
+		});
 	}
 
 	/** Translates {@code text} in the given language into English. Requires that language's TO_ENGLISH pack to be downloaded. */
@@ -114,6 +154,7 @@ public class TranslationEngine
 
 	public void shutdown()
 	{
+		warmUpExecutor.shutdownNow();
 		loaded.values().forEach(MarianOnnxTranslator::close);
 		loaded.clear();
 	}

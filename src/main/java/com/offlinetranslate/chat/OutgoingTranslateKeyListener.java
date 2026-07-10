@@ -117,6 +117,23 @@ public class OutgoingTranslateKeyListener implements KeyListener
 			return;
 		}
 
+		// Never call the blocking translate() below unless both translators are already
+		// loaded in memory. First-time loading (ONNX sessions + native SentencePiece library)
+		// takes seconds, and doing that synchronously inside this keypress handler was
+		// confirmed live to corrupt the chatbox's send state rather than just being slow -
+		// the message would never actually send, cycling between the input placeholder and
+		// the typed text instead. Warm up in the background and send untranslated this once.
+		boolean sourceWarm = source.isEnglish() || translationEngine.isWarm(source, PackDirection.TO_ENGLISH);
+		boolean targetWarm = target.isEnglish() || translationEngine.isWarm(target, PackDirection.FROM_ENGLISH);
+		if (!sourceWarm || !targetWarm)
+		{
+			translationEngine.warmUp(source, PackDirection.TO_ENGLISH);
+			translationEngine.warmUp(target, PackDirection.FROM_ENGLISH);
+			warn("Loading the translator for the first time - sending untranslated. Try again in a few seconds.");
+			client.setVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT, argument);
+			return;
+		}
+
 		try
 		{
 			String translated = translationEngine.translate(argument, source, target);

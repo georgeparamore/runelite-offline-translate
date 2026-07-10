@@ -75,14 +75,28 @@ issues are the most likely thing to show up if you add a new language or swap mo
    freezing chat input) before this plugin's key listener could ever act on it. Changed the
    default to `!t ` and added a runtime check that warns (once) if a prefix starting with `/`
    is configured, instead of silently doing nothing.
+6. **The `/t`/`!t` prefix match was case-sensitive**, but OSRS's chatbox auto-capitalizes the
+   first letter you type - `!t hello` actually arrives in `CHATBOX_TYPED_TEXT` as `!T hello` by
+   the time Enter is pressed, so it never matched and the raw auto-capitalized text got sent
+   untranslated every time. Match is now case-insensitive.
+7. **The real one: translating cold (first use) inside the Enter keypress handler corrupted
+   chat sending entirely**, not just failed slowly. First-time loading (ONNX sessions + the
+   native SentencePiece library) takes 1-4 seconds; running that synchronously inside the
+   keypress handler blocked the UI thread for that long, and confirmed live, that didn't just
+   feel slow - it broke the chatbox's send state, cycling between the "Press Enter to Chat"
+   placeholder and the typed text with the message never actually sending, for *any* message
+   while it was stuck (not just the `!t` one). Fixed by never calling the blocking translate()
+   from the keypress handler unless the translator is already warmed up in memory
+   (`TranslationEngine.isWarm`/`warmUp`) - a cold `!t` now sends untranslated immediately and
+   warms up in the background for next time, instead of blocking. Also proactively warms up on
+   plugin startup, right after a pack finishes downloading, and when you change your
+   preferred/output language in the panel, so the cold case is rare in practice.
 
 **Not yet verified - confirm on your own client:**
-- The `/t` outgoing-translation mechanism (`OutgoingTranslateKeyListener`) with the corrected
-  `!t ` prefix, in both public chat and PMs. It works by rewriting
-  `VarClientStr.CHATBOX_TYPED_TEXT` when Enter is pressed, on the assumption that RuneLite's
-  key-listener chain runs before the game's own chat-send handling reads that same variable.
-  **This is also the one part of this plugin that's closer to "modifying game communication"
-  than straightforward client-side rendering** - test it carefully.
+- The `/t`/`!t` outgoing-translation mechanism now that it can't block the UI thread - in both
+  public chat and PMs, and specifically: does a *warm* (already-loaded) translation actually
+  rewrite and send correctly? That path was never reachable during testing so far because
+  every attempt hit the cold-load bug above first.
 - Flag-icon rendering in real chat (`ChatIconManager` wiring) and the side panel's live
   behavior.
 - Translation quality on further languages/sentences - greedy decoding (not beam search) was a

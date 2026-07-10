@@ -5,6 +5,7 @@ import com.offlinetranslate.model.DownloadProgress;
 import com.offlinetranslate.model.ModelManager;
 import com.offlinetranslate.model.PackDirection;
 import com.offlinetranslate.model.PackStatus;
+import com.offlinetranslate.translate.TranslationEngine;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -23,15 +24,17 @@ import net.runelite.client.ui.ColorScheme;
 class LanguagePackRowPanel extends JPanel
 {
 	private final ModelManager modelManager;
+	private final TranslationEngine translationEngine;
 	private final Language language;
 
 	private final JButton incomingButton = new JButton();
 	private final JButton outgoingButton = new JButton();
 	private final JProgressBar progressBar = new JProgressBar(0, 100);
 
-	LanguagePackRowPanel(ModelManager modelManager, Language language)
+	LanguagePackRowPanel(ModelManager modelManager, TranslationEngine translationEngine, Language language)
 	{
 		this.modelManager = modelManager;
+		this.translationEngine = translationEngine;
 		this.language = language;
 
 		setLayout(new BorderLayout(5, 2));
@@ -102,9 +105,15 @@ class LanguagePackRowPanel extends JPanel
 
 		modelManager.download(language, direction, (DownloadProgress progress) ->
 			SwingUtilities.invokeLater(() -> progressBar.setValue((int) (progress.overallFraction() * 100))))
-			.whenComplete((result, error) -> SwingUtilities.invokeLater(() -> {
-				progressBar.setVisible(false);
-				refresh();
-			}));
+			.whenComplete((result, error) -> {
+				if (error == null)
+				{
+					translationEngine.warmUp(language, direction);
+				}
+				SwingUtilities.invokeLater(() -> {
+					progressBar.setVisible(false);
+					refresh();
+				});
+			});
 	}
 }

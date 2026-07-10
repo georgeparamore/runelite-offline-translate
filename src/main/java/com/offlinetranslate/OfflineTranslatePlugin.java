@@ -4,6 +4,7 @@ import com.google.inject.Provides;
 import com.offlinetranslate.chat.ChatTranslationService;
 import com.offlinetranslate.chat.OutgoingTranslateKeyListener;
 import com.offlinetranslate.model.ModelManager;
+import com.offlinetranslate.model.PackDirection;
 import com.offlinetranslate.translate.TranslationEngine;
 import com.offlinetranslate.ui.OfflineTranslatePanel;
 import java.awt.image.BufferedImage;
@@ -78,6 +79,12 @@ public class OfflineTranslatePlugin extends Plugin
 
 		eventBus.register(chatTranslationService);
 		keyManager.registerKeyListener(outgoingTranslateKeyListener);
+
+		// Warm up whatever's currently configured so /t's first real use doesn't hit the
+		// "loading, try again" fallback - warmUp() itself is a no-op if the pack isn't
+		// downloaded yet or is already loaded.
+		translationEngine.warmUp(config.preferredLanguage(), PackDirection.TO_ENGLISH);
+		translationEngine.warmUp(config.outputLanguage(), PackDirection.FROM_ENGLISH);
 	}
 
 	@Override

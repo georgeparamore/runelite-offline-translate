@@ -4,6 +4,7 @@ import com.offlinetranslate.Language;
 import com.offlinetranslate.OfflineTranslateConfig;
 import com.offlinetranslate.model.ModelManager;
 import com.offlinetranslate.model.PackDirection;
+import com.offlinetranslate.translate.TranslationEngine;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.GridLayout;
@@ -26,6 +27,7 @@ public class OfflineTranslatePanel extends PluginPanel
 	private final ConfigManager configManager;
 	private final OfflineTranslateConfig config;
 	private final ModelManager modelManager;
+	private final TranslationEngine translationEngine;
 
 	private final JComboBox<Language> preferredLanguageBox;
 	private final JComboBox<Language> outputLanguageBox;
@@ -35,11 +37,12 @@ public class OfflineTranslatePanel extends PluginPanel
 	private final JPanel packListPanel = new JPanel();
 
 	@Inject
-	public OfflineTranslatePanel(ConfigManager configManager, OfflineTranslateConfig config, ModelManager modelManager)
+	public OfflineTranslatePanel(ConfigManager configManager, OfflineTranslateConfig config, ModelManager modelManager, TranslationEngine translationEngine)
 	{
 		this.configManager = configManager;
 		this.config = config;
 		this.modelManager = modelManager;
+		this.translationEngine = translationEngine;
 
 		setLayout(new BorderLayout());
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -52,8 +55,11 @@ public class OfflineTranslatePanel extends PluginPanel
 		top.add(sectionLabel("Your language"));
 		preferredLanguageBox = new JComboBox<>(Language.values());
 		preferredLanguageBox.setSelectedItem(config.preferredLanguage());
-		preferredLanguageBox.addActionListener(e -> configManager.setConfiguration(
-			OfflineTranslateConfig.GROUP, "preferredLanguage", preferredLanguageBox.getSelectedItem()));
+		preferredLanguageBox.addActionListener(e -> {
+			Language selected = (Language) preferredLanguageBox.getSelectedItem();
+			configManager.setConfiguration(OfflineTranslateConfig.GROUP, "preferredLanguage", selected);
+			translationEngine.warmUp(selected, PackDirection.TO_ENGLISH);
+		});
 		top.add(preferredLanguageBox);
 
 		autoDetectBox = new JCheckBox("Auto-detect chat language", config.autoDetect());
@@ -69,8 +75,11 @@ public class OfflineTranslatePanel extends PluginPanel
 			.filter(Language::supportsTranslationFromEnglish)
 			.toArray(Language[]::new));
 		outputLanguageBox.setSelectedItem(config.outputLanguage());
-		outputLanguageBox.addActionListener(e -> configManager.setConfiguration(
-			OfflineTranslateConfig.GROUP, "outputLanguage", outputLanguageBox.getSelectedItem()));
+		outputLanguageBox.addActionListener(e -> {
+			Language selected = (Language) outputLanguageBox.getSelectedItem();
+			configManager.setConfiguration(OfflineTranslateConfig.GROUP, "outputLanguage", selected);
+			translationEngine.warmUp(selected, PackDirection.FROM_ENGLISH);
+		});
 		top.add(outputLanguageBox);
 
 		autoUpdateOutputBox = new JCheckBox("Auto-update to last speaker's language", config.autoUpdateOutputLanguage());
@@ -90,7 +99,7 @@ public class OfflineTranslatePanel extends PluginPanel
 			{
 				continue;
 			}
-			packListPanel.add(new LanguagePackRowPanel(modelManager, language));
+			packListPanel.add(new LanguagePackRowPanel(modelManager, translationEngine, language));
 		}
 		JScrollPane packScroll = new JScrollPane(packListPanel);
 		packScroll.setPreferredSize(new Dimension(0, 220));
@@ -148,7 +157,13 @@ public class OfflineTranslatePanel extends PluginPanel
 			if (choice == JOptionPane.YES_OPTION)
 			{
 				modelManager.download(language, direction, null)
-					.whenComplete((result, error) -> refreshPackList());
+					.whenComplete((result, error) -> {
+						if (error == null)
+						{
+							translationEngine.warmUp(language, direction);
+						}
+						refreshPackList();
+					});
 			}
 		});
 	}
