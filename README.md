@@ -243,6 +243,20 @@ issues are the most likely thing to show up if you add a new language or swap mo
     silently never fired at all had the loading not been made per-locale. Requesting "zh-CN"
     specifically fixed it without affecting `Language.fromCode()` afterward, since
     `LdLocale.getLanguage()` strips the region back off.
+22. **Three real UI bugs from a live screenshot of the redesigned panel** (item 20): checkbox
+    checkmarks were invisible (the default look-and-feel draws them in a dark, LAF-dependent
+    color with no simple override, indistinguishable from unchecked against this panel's
+    near-black background - fixed with a hand-painted `CheckboxIcon`); combo box text was
+    garbled ("Inglish" instead of "English") because `Language.toString()`'s flag emoji hit the
+    exact same multi-codepoint rendering problem `FlagIconFactory` already exists to work around
+    elsewhere, just missed for combo boxes (fixed with `LanguageComboBoxRenderer`, drawing a
+    flag icon + plain text instead); and the "Installed language packs" header's "Download all"
+    text button was overlapping into illegible jammed text at this panel's width (`BorderLayout`
+    doesn't shrink/wrap either side, it just overlaps once combined width exceeds the
+    container) - replaced with a small icon-only `DownloadIcon` button, matching the reference
+    mockup's own icon-only treatment there. Also proactively swapped the "Clear" button's "🗑"
+    emoji for a drawn `TrashIcon` on the same reasoning, before it was confirmed broken by a
+    screenshot rather than after.
 
 **Not yet verified - confirm on your own client:**
 - The redesigned translate hotkey now that channel-prefix preservation and incoming detection
