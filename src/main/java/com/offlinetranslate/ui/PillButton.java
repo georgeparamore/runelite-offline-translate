@@ -11,9 +11,18 @@ import net.runelite.client.ui.FontManager;
 /**
  * A {@link JButton} painted as a filled, fully-rounded pill instead of Swing's default
  * square-cornered button - the visual language the side panel redesign is built around.
- * {@code setContentAreaFilled(false)}/{@code setBorderPainted(false)} turn off the look-and-feel's
- * own square background/border so this can paint its own rounded one underneath the inherited
- * text-drawing behavior instead of fighting it.
+ * <p>
+ * <b>Deliberately opaque with {@code setContentAreaFilled(true)}</b> (the look-and-feel default),
+ * not the more obvious {@code setContentAreaFilled(false)}/{@code setOpaque(false)} - that
+ * combination was tried first and confirmed live to make these buttons render as nothing at all
+ * under RuneLite's actual runtime look-and-feel (text, icon, everything - not just the square
+ * background), even though the exact same custom-{@code paintComponent} technique works fine for
+ * plain {@link javax.swing.JLabel}s and {@link RoundedPanel} elsewhere in this panel. Rather than
+ * chase why a LAF-dependent flat-button technique broke under a LAF this project doesn't control,
+ * this stays opaque and lets the look-and-feel paint its own square background/text normally
+ * first, then draws the rounded pill on top in {@link #paintComponent} - the small unrounded
+ * corner slivers underneath end up hidden as long as {@link #fillColor} matches (or is close to)
+ * the parent container's own background, which it does everywhere this is used.
  */
 class PillButton extends JButton
 {
@@ -28,10 +37,13 @@ class PillButton extends JButton
 		setFont(FontManager.getRunescapeSmallFont());
 		setForeground(textColor);
 		setFocusPainted(false);
-		setContentAreaFilled(false);
 		setBorderPainted(false);
-		setOpaque(false);
 		setMargin(new java.awt.Insets(4, 10, 4, 10));
+		// Matches PanelColors.CARD - the background of LanguagePackRowPanel, the only container
+		// this is used inside - so the square corners the look-and-feel fills in underneath the
+		// rounded overlay (see class javadoc) blend into the row instead of showing as a visible
+		// square behind the pill.
+		setBackground(PanelColors.CARD);
 	}
 
 	void setFillColor(Color fillColor)

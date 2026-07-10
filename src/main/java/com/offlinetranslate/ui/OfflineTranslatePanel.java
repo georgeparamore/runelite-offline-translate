@@ -128,7 +128,10 @@ public class OfflineTranslatePanel extends PluginPanel
 		top.add(autoUpdateOutputBox);
 
 		top.add(javax.swing.Box.createVerticalStrut(18));
-		top.add(sectionHeaderWithDownloadAction("Installed language packs", this::downloadAllMissing));
+		// "Language packs", not "Installed language packs": this lists every available
+		// language, not just downloaded ones - most start out not downloaded, so a header
+		// implying otherwise was misleading (confirmed live: reported as inaccurate).
+		top.add(sectionHeaderWithDownloadAction("Language packs", this::downloadAllMissing));
 
 		packListPanel.setLayout(new BoxLayout(packListPanel, BoxLayout.Y_AXIS));
 		packListPanel.setOpaque(false);
