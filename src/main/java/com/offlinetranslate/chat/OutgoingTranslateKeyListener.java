@@ -63,6 +63,16 @@ public class OutgoingTranslateKeyListener implements KeyListener
 	@Override
 	public void keyPressed(KeyEvent e)
 	{
+		if (e.getModifiersEx() != 0)
+		{
+			// Temporary diagnostic: print every modified keypress so we can see exactly what
+			// key code/modifiers actually arrive here vs. what the configured hotkey expects,
+			// rather than guessing why a combo doesn't match.
+			System.err.println("[Offline Translate] keyPressed: keyCode=" + e.getExtendedKeyCode()
+				+ " modifiersEx=" + e.getModifiersEx() + " (" + java.awt.event.InputEvent.getModifiersExText(e.getModifiersEx()) + ")"
+				+ " | configured hotkey=" + config.translateHotkey() + " matches=" + config.translateHotkey().matches(e));
+		}
+
 		if (!config.translateHotkey().matches(e))
 		{
 			return;
