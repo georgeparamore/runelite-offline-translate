@@ -15,8 +15,8 @@ import java.awt.image.BufferedImage;
  */
 final class FlagIconFactory
 {
-	private static final int WIDTH = 16;
-	private static final int HEIGHT = 11;
+	private static final int WIDTH = 11;
+	private static final int HEIGHT = 8;
 
 	private FlagIconFactory()
 	{
@@ -130,9 +130,9 @@ final class FlagIconFactory
 		g.fillRect(0, 0, WIDTH, HEIGHT);
 		g.setColor(cross);
 		int vBarX = WIDTH * 5 / 12;
-		g.fillRect(vBarX, 0, 3, HEIGHT);
+		g.fillRect(vBarX, 0, 2, HEIGHT);
 		int hBarY = HEIGHT / 2 - 1;
-		g.fillRect(0, hBarY, WIDTH, 3);
+		g.fillRect(0, hBarY, WIDTH, 2);
 	}
 
 	/** Simplified Czech flag: white/red horizontal bands with a blue wedge from the hoist side. */
@@ -154,7 +154,7 @@ final class FlagIconFactory
 		g.setColor(field);
 		g.fillRect(0, 0, WIDTH, HEIGHT);
 		g.setColor(mark);
-		int size = 4;
+		int size = 3;
 		g.fillOval(WIDTH / 2 - size / 2, HEIGHT / 2 - size / 2, size, size);
 	}
 }
