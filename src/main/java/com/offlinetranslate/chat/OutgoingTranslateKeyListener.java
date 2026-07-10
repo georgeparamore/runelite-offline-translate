@@ -107,7 +107,13 @@ public class OutgoingTranslateKeyListener implements KeyListener
 		}
 		catch (TranslationException ex)
 		{
-			log.warn("Outgoing translation failed", ex);
+			// printStackTrace(), not log.warn(): SLF4J has been observed falling back to a
+			// no-op logger under the plain JavaExec launch (RuneLite's own bootstrap normally
+			// wires logback; running via ./gradlew runOfflineTranslate skips that), which was
+			// silently swallowing exactly this diagnostic. This bypasses the logging framework
+			// entirely so it's visible in the terminal regardless.
+			System.err.println("[Offline Translate] Outgoing translation failed:");
+			ex.printStackTrace();
 			warn("Translation failed - sending untranslated.");
 			client.setVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT, argument);
 		}

@@ -116,7 +116,11 @@ public class ChatTranslationService
 		}
 		catch (RuntimeException e)
 		{
-			log.debug("Language detection failed for message", e);
+			// See OutgoingTranslateKeyListener for why this is printStackTrace() and not
+			// log.debug(): SLF4J was observed defaulting to a no-op logger under the plain
+			// JavaExec launch used by ./gradlew runOfflineTranslate.
+			System.err.println("[Offline Translate] Language detection failed:");
+			e.printStackTrace();
 			return;
 		}
 
@@ -152,7 +156,8 @@ public class ChatTranslationService
 		}
 		catch (TranslationException e)
 		{
-			log.debug("Translation failed for message from {}: {}", sender, e.getMessage());
+			System.err.println("[Offline Translate] Translation failed for message from " + sender + ":");
+			e.printStackTrace();
 		}
 	}
 
