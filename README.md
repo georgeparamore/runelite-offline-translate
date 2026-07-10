@@ -61,17 +61,30 @@ issues are the most likely thing to show up if you add a new language or swap mo
    using the `.spm` files only for piece *segmentation* and detokenization spacing, and
    `vocab.json` for the actual id lookups in both directions. See `MarianVocab`.
 
-**Not yet verified - this environment still has no OSRS client to test real chat through:**
-- The `/t` outgoing-translation mechanism (`OutgoingTranslateKeyListener`). It works by
-  rewriting `VarClientStr.CHATBOX_TYPED_TEXT` when Enter is pressed, on the assumption that
-  RuneLite's key-listener chain runs before the game's own chat-send handling reads that same
-  variable. That's how other plugins that alter outgoing text are believed to work, but it
-  hasn't been confirmed live here. **This is also the one part of this plugin that's closer to
-  "modifying game communication" than straightforward client-side rendering** - test it
-  carefully.
+**Fixed after real in-client testing (thanks to a live test run on an actual Intel Mac):**
+4. **DJL's SentencePiece module dropped Intel Mac (`osx-x86_64`) native binaries starting in
+   version 0.30.0** - it only bundles `osx-aarch64` (Apple Silicon), `linux-x86_64`/`aarch64`,
+   and `win-x86_64` from then on. On Intel Mac this failed at pack-load time with `Resource not
+   found in classpath: native/lib/osx-x86_64/libsentencepiece_native.dylib` - a missing binary,
+   not a code bug. Pinned to `0.29.0`, the last release that still ships it (its
+   `SpTokenizer`/`SpProcessor` API is byte-for-byte identical to the current one, confirmed by
+   diffing the source).
+5. **The default `/t` command prefix collided with OSRS's own client behavior** - the game
+   itself reserves a leading `/` in the chatbox to mean "switch to a private message with this
+   player name," so typing `/t hello` got swallowed by that (showing "Unknown command: /t" or
+   freezing chat input) before this plugin's key listener could ever act on it. Changed the
+   default to `!t ` and added a runtime check that warns (once) if a prefix starting with `/`
+   is configured, instead of silently doing nothing.
+
+**Not yet verified - confirm on your own client:**
+- The `/t` outgoing-translation mechanism (`OutgoingTranslateKeyListener`) with the corrected
+  `!t ` prefix, in both public chat and PMs. It works by rewriting
+  `VarClientStr.CHATBOX_TYPED_TEXT` when Enter is pressed, on the assumption that RuneLite's
+  key-listener chain runs before the game's own chat-send handling reads that same variable.
+  **This is also the one part of this plugin that's closer to "modifying game communication"
+  than straightforward client-side rendering** - test it carefully.
 - Flag-icon rendering in real chat (`ChatIconManager` wiring) and the side panel's live
-  behavior - straightforward, well-established RuneLite patterns, but unexercised against a
-  real client/session in this environment.
+  behavior.
 - Translation quality on further languages/sentences - greedy decoding (not beam search) was a
   deliberate v1 simplicity tradeoff, so expect occasional rougher phrasing on longer or more
   ambiguous input than the short chat-style lines tested above.

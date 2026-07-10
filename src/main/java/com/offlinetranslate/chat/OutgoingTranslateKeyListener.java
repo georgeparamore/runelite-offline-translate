@@ -8,6 +8,7 @@ import com.offlinetranslate.model.PackStatus;
 import com.offlinetranslate.translate.TranslationEngine;
 import com.offlinetranslate.translate.TranslationException;
 import java.awt.event.KeyEvent;
+import java.util.Set;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +49,7 @@ public class OutgoingTranslateKeyListener implements KeyListener
 	private final OfflineTranslateConfig config;
 	private final TranslationEngine translationEngine;
 	private final ModelManager modelManager;
+	private final Set<String> warnedAboutSlashPrefix = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
 	@Inject
 	public OutgoingTranslateKeyListener(Client client, ClientThread clientThread, OfflineTranslateConfig config, TranslationEngine translationEngine, ModelManager modelManager)
@@ -75,6 +77,18 @@ public class OutgoingTranslateKeyListener implements KeyListener
 		String prefix = config.translateCommand();
 		if (prefix == null || prefix.isEmpty())
 		{
+			return;
+		}
+		if (prefix.startsWith("/"))
+		{
+			// A leading '/' is reserved by the OSRS client itself to mean "start a PM to a
+			// player with this name" - it intercepts the keystrokes before this listener's
+			// mutated var would ever be read for sending, so a '/'-prefixed command can never
+			// actually work. Warn once per config value rather than silently doing nothing.
+			if (warnedAboutSlashPrefix.add(prefix))
+			{
+				warn("Translate command \"" + prefix + "\" starts with '/', which OSRS reserves for PMs - change it in the plugin config to something else (e.g. \"!t \").");
+			}
 			return;
 		}
 

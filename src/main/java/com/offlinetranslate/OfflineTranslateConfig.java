@@ -56,12 +56,12 @@ public interface OfflineTranslateConfig extends Config
 	@ConfigItem(
 		keyName = "translateCommand",
 		name = "Translate command",
-		description = "Chat prefix that translates the rest of your typed message from your preferred language into the output language before sending. Experimental - see README.",
+		description = "Chat prefix that translates the rest of your typed message from your preferred language into the output language before sending. Must NOT start with '/' - OSRS's own client reserves a leading '/' to mean 'switch to a PM with this player name', so a '/'-prefixed command gets swallowed by that before this plugin ever sees it. Experimental - see README.",
 		position = 4
 	)
 	default String translateCommand()
 	{
-		return "/t";
+		return "!t ";
 	}
 
 	@ConfigItem(
