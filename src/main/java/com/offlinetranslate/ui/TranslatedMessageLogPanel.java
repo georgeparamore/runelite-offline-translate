@@ -33,9 +33,14 @@ class TranslatedMessageLogPanel extends JPanel
 		setLayout(new BorderLayout());
 		setOpaque(false);
 
-		JButton clearButton = new JButton("🗑 Clear");
+		// Drawn TrashIcon, not a "🗑" glyph: the RuneScape bitmap font this button uses can't be
+		// trusted to have Unicode Dingbats coverage any more than it had flag-emoji coverage
+		// (see FlagIconFactory) - confirmed live as garbled text elsewhere in this panel where an
+		// emoji was left in place of a drawn icon.
+		JButton clearButton = new JButton("Clear", new TrashIcon());
 		clearButton.setFont(FontManager.getRunescapeSmallFont());
 		clearButton.setForeground(PanelColors.TEXT_MUTED);
+		clearButton.setIconTextGap(4);
 		clearButton.setFocusPainted(false);
 		clearButton.setBorderPainted(false);
 		clearButton.setContentAreaFilled(false);

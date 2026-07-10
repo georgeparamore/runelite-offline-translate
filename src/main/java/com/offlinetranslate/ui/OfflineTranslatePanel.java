@@ -128,7 +128,7 @@ public class OfflineTranslatePanel extends PluginPanel
 		top.add(autoUpdateOutputBox);
 
 		top.add(javax.swing.Box.createVerticalStrut(18));
-		top.add(sectionHeaderWithAction("Installed language packs", "Download all", this::downloadAllMissing));
+		top.add(sectionHeaderWithDownloadAction("Installed language packs", this::downloadAllMissing));
 
 		packListPanel.setLayout(new BoxLayout(packListPanel, BoxLayout.Y_AXIS));
 		packListPanel.setOpaque(false);
@@ -197,10 +197,16 @@ public class OfflineTranslatePanel extends PluginPanel
 	private static void styleComboBox(JComboBox<Language> comboBox)
 	{
 		comboBox.setAlignmentX(Component.LEFT_ALIGNMENT);
-		comboBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, comboBox.getPreferredSize().height));
 		comboBox.setBackground(PanelColors.CARD);
 		comboBox.setForeground(PanelColors.TEXT);
 		comboBox.setFont(FontManager.getRunescapeFont());
+		// Custom renderer, not the default: Language.toString() includes a flag emoji character,
+		// which a plain JComboBox renderer can't reliably draw any better than a JLabel could
+		// elsewhere in this panel - confirmed live as garbled text ("Inglish" instead of
+		// "English"). Set *after* setMaximumSize below so the box's preferred height reflects
+		// the real (icon+text) row height rather than the plain-text one.
+		comboBox.setRenderer(new LanguageComboBoxRenderer());
+		comboBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, comboBox.getPreferredSize().height));
 	}
 
 	private static void styleCheckbox(JCheckBox checkbox)
@@ -210,6 +216,11 @@ public class OfflineTranslatePanel extends PluginPanel
 		checkbox.setFont(FontManager.getRunescapeSmallFont());
 		checkbox.setAlignmentX(Component.LEFT_ALIGNMENT);
 		checkbox.setFocusPainted(false);
+		// The default look-and-feel checkbox icon draws its checkmark in a dark, LAF-dependent
+		// color that's invisible against this panel's near-black background - confirmed live,
+		// a checked box looked identical to an unchecked one. CheckboxIcon paints both states
+		// itself instead.
+		checkbox.setIcon(new CheckboxIcon());
 	}
 
 	/** A compact, muted-uppercase section title, matching a "settings group label" look rather than a heavy divider. */
@@ -223,8 +234,15 @@ public class OfflineTranslatePanel extends PluginPanel
 		return label;
 	}
 
-	/** A section header with a small text action pinned to the right (e.g. "Download all"), for sections that need one. */
-	private static JPanel sectionHeaderWithAction(String text, String actionText, Runnable action)
+	/**
+	 * A section header with a small download-arrow icon action pinned to the right, for
+	 * "Installed language packs". An icon rather than a "Download all" text button: at this
+	 * panel's ~200px usable width, the label text and a text button on the same BorderLayout row
+	 * were wide enough together to overlap rather than wrap (BorderLayout doesn't shrink either
+	 * side to fit) - confirmed live as illegible jammed-together text. A single small icon
+	 * doesn't have that problem, and matches the reference mockup's own icon-only treatment here.
+	 */
+	private static JPanel sectionHeaderWithDownloadAction(String text, Runnable action)
 	{
 		JPanel row = new JPanel(new java.awt.BorderLayout());
 		row.setOpaque(false);
@@ -237,9 +255,8 @@ public class OfflineTranslatePanel extends PluginPanel
 		label.setForeground(PanelColors.TEXT_MUTED);
 		row.add(label, java.awt.BorderLayout.WEST);
 
-		javax.swing.JButton actionButton = new javax.swing.JButton(actionText);
-		actionButton.setFont(FontManager.getRunescapeSmallFont());
-		actionButton.setForeground(PanelColors.ACCENT);
+		javax.swing.JButton actionButton = new javax.swing.JButton(new DownloadIcon());
+		actionButton.setToolTipText("Download all");
 		actionButton.setFocusPainted(false);
 		actionButton.setBorderPainted(false);
 		actionButton.setContentAreaFilled(false);
