@@ -98,6 +98,24 @@ class LanguagePackRowPanel extends JPanel
 		button.setFocusPainted(false);
 	}
 
+	/** Starts downloading whichever of this row's packs (incoming/outgoing) aren't already ready or in progress. Used by the panel-wide "Download all" button. */
+	void downloadMissing()
+	{
+		if (isMissing(modelManager.getStatus(language, PackDirection.TO_ENGLISH)))
+		{
+			download(PackDirection.TO_ENGLISH, incomingButton);
+		}
+		if (language.supportsTranslationFromEnglish() && isMissing(modelManager.getStatus(language, PackDirection.FROM_ENGLISH)))
+		{
+			download(PackDirection.FROM_ENGLISH, outgoingButton);
+		}
+	}
+
+	private static boolean isMissing(PackStatus status)
+	{
+		return status == PackStatus.NOT_DOWNLOADED || status == PackStatus.ERROR;
+	}
+
 	void refresh()
 	{
 		updateButton(incomingButton, modelManager.getStatus(language, PackDirection.TO_ENGLISH), "Incoming");

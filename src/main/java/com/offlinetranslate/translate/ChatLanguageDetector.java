@@ -94,9 +94,25 @@ public class ChatLanguageDetector
 	private static final int MIN_LENGTH_FOR_DETECTION = 20;
 
 	/**
+	 * Closely-related languages (Spanish/Italian and other Romance-language pairs are the
+	 * reported case, but this isn't limited to that pair) can still both score high on
+	 * n-gram overlap even at the {@link #MIN_LENGTH_FOR_DETECTION} floor, with the *wrong* one
+	 * narrowly on top - that's a different failure mode from the short-text problem the length
+	 * floor already handles (there, the top result was wrong by a wide, confident margin; here
+	 * it's two real candidates in a near-tie). Requiring the top result to clearly lead the
+	 * runner-up, rather than taking index 0 unconditionally, turns a coin-flip guess into "not
+	 * confident enough to call" - safer than a wrong translation, and consistent with how
+	 * {@link #MIN_LENGTH_FOR_DETECTION} already accepts "detected nothing" over "detected
+	 * wrong." Not tuned against a specific repro of the Spanish/Italian mixup - if it's still
+	 * happening, the margin printed below on every call is the number to look at.
+	 */
+	private static final double MIN_CONFIDENCE_MARGIN = 0.15;
+
+	/**
 	 * @return the detected {@link Language} (which may be {@link Language#ENGLISH}), or null if
-	 * detection is unavailable, the text is shorter than {@link #MIN_LENGTH_FOR_DETECTION}, or
-	 * the detected language isn't in the supported list at all.
+	 * detection is unavailable, the text is shorter than {@link #MIN_LENGTH_FOR_DETECTION}, the
+	 * top two candidates are within {@link #MIN_CONFIDENCE_MARGIN} of each other, or the
+	 * detected language isn't in the supported list at all.
 	 */
 	public Language detect(String text)
 	{
@@ -110,13 +126,28 @@ public class ChatLanguageDetector
 		// getProbabilities() is correct"). Safe to take the top result unconditionally now that
 		// short input (where that top result was often wrong) is filtered out above.
 		TextObject textObject = textObjectFactory.forText(text);
-		List<DetectedLanguage> probabilities = languageDetector.getProbabilities(textObject);
+		List<DetectedLanguage> probabilities = new ArrayList<>(languageDetector.getProbabilities(textObject));
+		probabilities.sort((a, b) -> Double.compare(b.getProbability(), a.getProbability()));
 		System.err.println("[Offline Translate] getProbabilities(\"" + text + "\") -> " + probabilities);
 		if (probabilities.isEmpty())
 		{
 			return null;
 		}
 
-		return Language.fromCode(probabilities.get(0).getLocale().getLanguage());
+		DetectedLanguage top = probabilities.get(0);
+		if (probabilities.size() > 1)
+		{
+			DetectedLanguage runnerUp = probabilities.get(1);
+			double margin = top.getProbability() - runnerUp.getProbability();
+			if (margin < MIN_CONFIDENCE_MARGIN)
+			{
+				System.err.println("[Offline Translate] too close to call: " + top.getLocale() + "=" + top.getProbability()
+					+ " vs " + runnerUp.getLocale() + "=" + runnerUp.getProbability()
+					+ " (margin=" + margin + ", need " + MIN_CONFIDENCE_MARGIN + ")");
+				return null;
+			}
+		}
+
+		return Language.fromCode(top.getLocale().getLanguage());
 	}
 }

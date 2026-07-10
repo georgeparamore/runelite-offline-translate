@@ -12,6 +12,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
+import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
@@ -111,6 +112,23 @@ public class OfflineTranslatePanel extends PluginPanel
 
 		top.add(javax.swing.Box.createVerticalStrut(14));
 		top.add(sectionHeader("Language packs"));
+
+		JButton downloadAllButton = new JButton("Download all");
+		downloadAllButton.setFont(FontManager.getRunescapeSmallFont());
+		downloadAllButton.setFocusPainted(false);
+		downloadAllButton.setAlignmentX(Component.LEFT_ALIGNMENT);
+		downloadAllButton.addActionListener(e -> {
+			for (java.awt.Component c : packListPanel.getComponents())
+			{
+				if (c instanceof LanguagePackRowPanel)
+				{
+					((LanguagePackRowPanel) c).downloadMissing();
+				}
+			}
+		});
+		top.add(downloadAllButton);
+		top.add(javax.swing.Box.createVerticalStrut(6));
+
 		packListPanel.setLayout(new GridLayout(0, 1));
 		packListPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		for (Language language : Language.values())
