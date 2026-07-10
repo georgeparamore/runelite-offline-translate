@@ -133,24 +133,17 @@ public class OutgoingTranslateKeyListener implements KeyListener
 		{
 			String translated = translationEngine.translate(typed, source, target);
 			System.err.println("[Offline Translate] translated \"" + typed + "\" -> \"" + translated + "\"");
-			// client.refreshChat() (used for the chat *log*, and what an earlier version of
-			// this called here) does not refresh the input line - confirmed live, the box kept
-			// showing the old text even though the underlying var and the eventual send were
-			// both correct. ScriptID.CHAT_TEXT_INPUT_REBUILD fixed the PM input widget
-			// (confirmed live) but not the main public/clan/FC chatbox - they're evidently
-			// different widgets with different rebuild scripts. BUILD_CHATBOX is RuneLite's
-			// documented "rebuild the chatbox" script, used here for the CHATBOX_TYPED_TEXT
-			// case specifically rather than assuming one script covers both.
+			// client.refreshChat() does not refresh the input line (only the message log).
+			// BUILD_CHATBOX was tried for the public-chat case specifically and confirmed live
+			// NOT to fix it either - unlike CHAT_TEXT_INPUT_REBUILD, which is the only one of
+			// these with any confirmed effect at all (fixed the PM input widget). Calling both
+			// unconditionally here rather than branching: worst case one is a harmless no-op
+			// for a given widget, and this way nothing relies on an unconfirmed assumption
+			// about which specific script the public chatbox actually needs.
 			clientThread.invoke(() -> {
 				client.setVarcStrValue(finalSourceVar, translated);
-				if (finalSourceVar == VarClientStr.INPUT_TEXT)
-				{
-					client.runScript(ScriptID.CHAT_TEXT_INPUT_REBUILD, "");
-				}
-				else
-				{
-					client.runScript(ScriptID.BUILD_CHATBOX);
-				}
+				client.runScript(ScriptID.CHAT_TEXT_INPUT_REBUILD, "");
+				client.runScript(ScriptID.BUILD_CHATBOX);
 			});
 		}
 		catch (TranslationException ex)
