@@ -170,7 +170,30 @@ issues are the most likely thing to show up if you add a new language or swap mo
     before adding it to the sidebar (`ClientUI.addNavigation` adds `getWrappedPanel()`, not the
     panel itself), so the manual outer scrollpane from item 13 was redundant and has been
     removed - back to a single `BoxLayout` column, same pattern already proven to work for the
-    pack list.
+    pack list. **Confirmed live** - both auto-detected and manually-translated messages now show
+    up in the side panel.
+15. **Right-click "Translate" moved from the player-option system to the chatbox itself**, per
+    request - the old `MenuManager.addPlayerMenuItem()` mechanism only ever appeared on the 3D
+    player model or a chat *name* click specifically (both routed through the same player-option
+    system). It's now added directly to chat line widgets via `MenuEntryAdded` on
+    `WidgetInfo.CHATBOX_MESSAGE_LINES`, so it shows up right-clicking anywhere on the line - name
+    or message text. The hovered widget is matched back to a live `MessageNode` by comparing
+    rendered text content (tag-stripped) against `client.getChatLineMap()`, since OSRS renders
+    each chat line as one text widget rather than separate name/message widgets, and index-based
+    correlation against the combined "All" chat view isn't safe to assume without a live client
+    to verify it against. **This is the least-tested piece in the codebase right now** - needs
+    confirmation that `MenuEntryAdded` actually fires reliably for ordinary chat lines.
+16. **Side panel log entries were showing raw formatting junk** - literal text like
+    `<img=10>Optimism` instead of a clean name, and a tofu box instead of a flag, because a
+    plain Swing `JLabel` can't render OSRS's `<img=N>`/`<col=...>` chat tags or flag emoji
+    glyphs any better than the in-game chat font could (see item 10). Sender names are now
+    tag-stripped before display, and flags reuse `FlagIconFactory`'s real color-shape rendering
+    (now public, with a size parameter) instead of an emoji glyph. Entries also got a
+    card-style redesign and a "Clear" button.
+17. **`MarianOnnxTranslator`'s length caps raised from 128/96 to 400/400 tokens** - the decode
+    loop already breaks early on the model's own end-of-sequence token, so this costs nothing
+    for the common short-chat-line case; it only matters for unusually long messages that were
+    silently coming back cut off mid-sentence before.
 
 **Not yet verified - confirm on your own client:**
 - The redesigned translate hotkey now that channel-prefix preservation and incoming detection
@@ -180,17 +203,12 @@ issues are the most likely thing to show up if you add a new language or swap mo
   before you press Enter (unlike PMs, which do). Two rebuild-script attempts
   (`CHAT_TEXT_INPUT_REBUILD`, `BUILD_CHATBOX`) plus a same-tick-ordering fix (deferring the
   rebuild to the next tick via `invokeLater`) haven't confirmed-fixed it yet.
-- Right-click "Translate" - implemented but not yet exercised live (both the world-player and
-  chat-name click paths, and whether the last-message tracking correctly follows the right
-  player when there are several people talking). Diagnostics were added to confirm whether
-  `MenuManager.addPlayerMenuItem()` actually landed - RuneLite only has 4 shared custom
-  player-menu-option slots system-wide, and another enabled plugin could already have claimed
-  all of them, which would make registration silently no-op. Check the console for
-  `player menu options after registration: [...]` after logging in.
-- The `@Singleton` fix (item 14) for the side panel log - not yet confirmed live. Should now
-  show both incoming auto-detected translations and right-click manual translations in the
-  "Translated messages" section without needing to scroll unusually far (the panel is a normal
-  single-column layout now, same as before any of the log-visibility fixes).
+- The rebuilt chatbox right-click "Translate" (item 15) - not yet exercised live at all. Needs
+  confirmation that `MenuEntryAdded` actually fires for ordinary public/friends/clan chat lines,
+  that the widget-to-`MessageNode` text-matching in `findChatLine()` actually finds a match
+  (watch the console for `chat line widget hovered but no matching MessageNode found` - if that
+  ever prints, the matching approach needs rethinking), and that right-clicking works both on
+  the name portion and elsewhere in the message text on the same line.
 - Translation quality on further languages/sentences - greedy decoding (not beam search) was a
   deliberate v1 simplicity tradeoff, so expect occasional rougher phrasing on longer or more
   ambiguous input than the short chat-style lines tested above.
