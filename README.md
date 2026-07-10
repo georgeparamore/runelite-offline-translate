@@ -209,6 +209,17 @@ issues are the most likely thing to show up if you add a new language or swap mo
     there, unlike auto-detect/auto-update which already had their own checkboxes). Also raised
     the "Translated messages" log height from 300 to 500px - a handful of entries were already
     requiring a scroll within that section.
+20. **Full visual redesign of the side panel**, from a reference mockup: near-black background,
+    violet accent, rounded cards/pills instead of RuneLite's default square dark-gray/orange
+    styling, uppercase muted section labels, and a timestamp on every log entry. Swing has no
+    built-in rounded-rect painting, so `RoundedPanel`/`PillButton` were added as small reusable
+    custom-painted components; `JComboBox` was recolored to match but keeps square corners (a
+    faithful rounded combo box needs a custom `ComboBoxUI` delegate, judged out of scope for
+    this pass). Pack rows collapsed from two buttons (Incoming/Outgoing) to one "Download" that
+    fetches both directions together - downloading only one direction was confirmed to not be a
+    state anyone wants - plus a "Delete" button with a confirmation dialog, and every successful
+    download/delete now posts an in-game chat confirmation (there was previously no feedback at
+    all that a background download had actually finished).
 
 **Not yet verified - confirm on your own client:**
 - The redesigned translate hotkey now that channel-prefix preservation and incoming detection
