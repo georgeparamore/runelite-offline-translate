@@ -13,6 +13,7 @@ import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.ScriptID;
 import net.runelite.api.VarClientStr;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.input.KeyListener;
@@ -82,13 +83,25 @@ public class OutgoingTranslateKeyListener implements KeyListener
 		// text, but this makes that explicit rather than assumed.
 		e.consume();
 
-		String typed = client.getVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT);
-		System.err.println("[Offline Translate] hotkey fired, typed=\"" + typed + "\"");
+		// Private messages don't use CHATBOX_TYPED_TEXT for the message body at all - they use
+		// a separate var (INPUT_TEXT), confirmed live: translating and rewriting
+		// CHATBOX_TYPED_TEXT during a PM silently did nothing, because that's not where PM
+		// text actually lives. Check INPUT_TEXT first and fall back to CHATBOX_TYPED_TEXT,
+		// rather than trying to determine "PM mode" some other way.
+		int sourceVar = VarClientStr.INPUT_TEXT;
+		String typed = client.getVarcStrValue(sourceVar);
+		if (typed == null || typed.trim().isEmpty())
+		{
+			sourceVar = VarClientStr.CHATBOX_TYPED_TEXT;
+			typed = client.getVarcStrValue(sourceVar);
+		}
+		System.err.println("[Offline Translate] hotkey fired, var=" + sourceVar + " typed=\"" + typed + "\"");
 		if (typed == null || typed.trim().isEmpty())
 		{
 			System.err.println("[Offline Translate] nothing typed, doing nothing");
 			return;
 		}
+		int finalSourceVar = sourceVar;
 
 		Language source = config.preferredLanguage();
 		Language target = config.outputLanguage();
@@ -120,15 +133,15 @@ public class OutgoingTranslateKeyListener implements KeyListener
 		{
 			String translated = translationEngine.translate(typed, source, target);
 			System.err.println("[Offline Translate] translated \"" + typed + "\" -> \"" + translated + "\"");
-			// Writing the var alone (from this thread, without a follow-up redraw signal) was
-			// confirmed live to leave the on-screen chatbox showing the old text even though
-			// the underlying value presumably changed - the input line likely doesn't
-			// repaint from CHATBOX_TYPED_TEXT on its own the way a normal keystroke's redraw
-			// does. Matching the same pattern already confirmed working for chat message
-			// flagging: mutate on the client thread and follow with refreshChat().
+			// client.refreshChat() (used for the chat *log*, and what an earlier version of
+			// this called here) does not refresh the input line - confirmed live, the box kept
+			// showing the old text even though the underlying var and the eventual send were
+			// both correct. ScriptID.CHAT_TEXT_INPUT_REBUILD is the client's own real
+			// "redraw the chat input widget" script (used, per its javadoc, for exactly this
+			// kind of programmatic text-input change), which is what was actually missing.
 			clientThread.invoke(() -> {
-				client.setVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT, translated);
-				client.refreshChat();
+				client.setVarcStrValue(finalSourceVar, translated);
+				client.runScript(ScriptID.CHAT_TEXT_INPUT_REBUILD, "");
 			});
 		}
 		catch (TranslationException ex)
