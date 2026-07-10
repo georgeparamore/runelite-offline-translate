@@ -88,14 +88,17 @@ public class ChatTranslationService
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
+		System.err.println("[Offline Translate] onChatMessage: type=" + event.getType() + " name=" + event.getName() + " message=\"" + event.getMessage() + "\" autoDetect=" + config.autoDetect());
 		if (!config.autoDetect() || !TRANSLATABLE_TYPES.contains(event.getType()))
 		{
+			System.err.println("[Offline Translate] skipped: autoDetect off or type not translatable");
 			return;
 		}
 
 		String localName = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : null;
 		if (localName != null && localName.equalsIgnoreCase(net.runelite.client.util.Text.removeTags(event.getName())))
 		{
+			System.err.println("[Offline Translate] skipped: message is from local player");
 			return;
 		}
 
@@ -124,8 +127,10 @@ public class ChatTranslationService
 			return;
 		}
 
+		System.err.println("[Offline Translate] detected=" + detected + " preferred=" + preferred);
 		if (detected == null || detected == preferred)
 		{
+			System.err.println("[Offline Translate] skipped: nothing detected or same as preferred");
 			return;
 		}
 
@@ -140,6 +145,7 @@ public class ChatTranslationService
 		}
 
 		PackStatus toEnglishStatus = detected.isEnglish() ? PackStatus.READY : modelManager.getStatus(detected, PackDirection.TO_ENGLISH);
+		System.err.println("[Offline Translate] toEnglishStatus=" + toEnglishStatus);
 		if (toEnglishStatus != PackStatus.READY)
 		{
 			if (config.promptToDownloadMissingPacks() && promptedThisSession.add(detected))
