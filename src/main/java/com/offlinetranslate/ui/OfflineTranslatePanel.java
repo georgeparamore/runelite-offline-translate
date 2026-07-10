@@ -48,6 +48,7 @@ public class OfflineTranslatePanel extends PluginPanel
 	private final JComboBox<Language> outputLanguageBox;
 	private final JCheckBox autoDetectBox;
 	private final JCheckBox autoUpdateOutputBox;
+	private final JCheckBox showFlagsBox;
 	private final TranslatedMessageLogPanel logPanel = new TranslatedMessageLogPanel();
 	private final JPanel packListPanel = new JPanel();
 
@@ -88,6 +89,13 @@ public class OfflineTranslatePanel extends PluginPanel
 		autoDetectBox.addActionListener(e -> configManager.setConfiguration(
 			OfflineTranslateConfig.GROUP, "autoDetect", autoDetectBox.isSelected()));
 		top.add(autoDetectBox);
+
+		top.add(javax.swing.Box.createVerticalStrut(4));
+		showFlagsBox = new JCheckBox("Show flags in chat", config.showFlagsInChat());
+		styleCheckbox(showFlagsBox);
+		showFlagsBox.addActionListener(e -> configManager.setConfiguration(
+			OfflineTranslateConfig.GROUP, "showFlagsInChat", showFlagsBox.isSelected()));
+		top.add(showFlagsBox);
 
 		top.add(javax.swing.Box.createVerticalStrut(14));
 		top.add(sectionHeader("Output language (for the translate hotkey)"));
@@ -151,11 +159,12 @@ public class OfflineTranslatePanel extends PluginPanel
 		// logPanel has its own internal JScrollPane (see TranslatedMessageLogPanel) with no
 		// fixed size of its own, so inside this outer BoxLayout column it needs an explicit
 		// height or it collapses to near-zero - same reasoning as packScroll's fixed height
-		// above. Kept tall enough to be genuinely useful once you scroll the outer pane down to
-		// it, rather than a token sliver.
+		// above. Raised from 300 to 500 per feedback that a handful of entries already needed
+		// scrolling within the section - most people will spend more time reading this list than
+		// the pack list above it, so it gets more of the panel's height budget.
 		logPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-		logPanel.setPreferredSize(new Dimension(0, 300));
-		logPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 300));
+		logPanel.setPreferredSize(new Dimension(0, 500));
+		logPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 500));
 		top.add(logPanel);
 	}
 

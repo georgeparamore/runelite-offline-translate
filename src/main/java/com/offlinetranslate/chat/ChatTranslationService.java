@@ -24,13 +24,12 @@ import net.runelite.api.ChatLineBuffer;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.MenuAction;
-import net.runelite.api.MenuEntry;
 import net.runelite.api.MessageNode;
+import net.runelite.api.Point;
 import net.runelite.api.events.ChatMessage;
-import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.api.events.MenuOpened;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetInfo;
-import net.runelite.api.widgets.WidgetUtil;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ChatIconManager;
@@ -56,12 +55,12 @@ public class ChatTranslationService
 	);
 
 	/**
-	 * Added directly to chat line widgets via {@link #onMenuEntryAdded}, rather than through
+	 * Added directly to chat line widgets via {@link #onMenuOpened}, rather than through
 	 * {@code MenuManager.addPlayerMenuItem()} (the original implementation, which only ever
 	 * appeared on the 3D player model / chat *name* click, both driven by the same underlying
-	 * player-option system). Piggybacking on the chat line's own widget instead means this shows
-	 * up right-clicking anywhere on the line - the name or the message text - inside the actual
-	 * chatbox, which is what was asked for.
+	 * player-option system). Checking the hovered chat line's own widget bounds instead means
+	 * this shows up right-clicking anywhere on the line - the name or the message text - inside
+	 * the actual chatbox, which is what was asked for.
 	 */
 	static final String RIGHT_CLICK_OPTION = "Translate";
 	private static final int MAX_TRACKED_PLAYERS = 200;
@@ -150,87 +149,84 @@ public class ChatTranslationService
 		detectionExecutor.submit(() -> handleMessage(sender, message, messageNode));
 	}
 
+	/**
+	 * Rewritten from an earlier {@code MenuEntryAdded}-based version that piggybacked on
+	 * whatever default option (e.g. "Report") the game already added for the hovered chat line -
+	 * confirmed live to never show "Translate" at all, meaning that assumption was wrong
+	 * somewhere (either the game doesn't add a default option for ordinary chat lines the way
+	 * player-model right-clicks do, or chat lines don't belong to the widget group that
+	 * implementation assumed - {@code MenuEntryAdded} firing zero times gave no way to tell
+	 * which). This version doesn't depend on the game adding anything: {@code MenuOpened} fires
+	 * once whenever a right-click menu is about to display, so this checks the mouse position
+	 * directly against every chat line widget's bounds and adds "Translate" unconditionally when
+	 * the cursor is over one - independent of whether OSRS itself offered any options there.
+	 */
 	@Subscribe
-	public void onMenuEntryAdded(MenuEntryAdded event)
+	public void onMenuOpened(MenuOpened event)
 	{
-		MenuEntry entry = event.getMenuEntry();
-		Widget widget = entry.getWidget();
-
-		// Broad diagnostic, not gated on the CHATBOX_MESSAGE_LINES filter below: MenuEntryAdded
-		// fires for every widget-based menu entry across the whole client (inventory, minimap,
-		// tabs...), so logging all of it would flood the console, but any text-bearing widget is
-		// a small enough subset to be useful - this is the only way to find out, without a live
-        // client to test against, whether chat lines actually belong to the interface this code
-		// assumes (WidgetInfo.CHATBOX_MESSAGE_LINES), what their real group/component ids are,
-		// and whether MenuEntryAdded fires for them at all when hovering (vs. only ever firing
-		// for other unrelated widgets). If "Translate" never appears live, the answer is in here.
-		if (widget != null && widget.getText() != null && widget.getText().length() > 3)
-		{
-			System.err.println("[Offline Translate] MenuEntryAdded on text widget: option=\"" + event.getOption()
-				+ "\" widgetId=" + widget.getId()
-				+ " group=" + WidgetUtil.componentToInterface(widget.getId())
-				+ " component=" + WidgetUtil.componentToId(widget.getId())
-				+ " index=" + widget.getIndex()
-				+ " text=\"" + widget.getText() + "\""
-				+ " (expected chat group=" + WidgetInfo.CHATBOX_MESSAGE_LINES.getGroupId() + ")");
-		}
-
-		if (widget == null || WidgetUtil.componentToInterface(widget.getId()) != WidgetInfo.CHATBOX_MESSAGE_LINES.getGroupId())
+		Widget container = client.getWidget(WidgetInfo.CHATBOX_MESSAGE_LINES);
+		if (container == null)
 		{
 			return;
 		}
 
-		String widgetText = widget.getText();
-		if (widgetText == null || widgetText.isEmpty())
+		Widget[] children = container.getChildren();
+		if (children == null)
 		{
+			System.err.println("[Offline Translate] chatbox message-lines widget " + container.getId() + " has no children");
 			return;
 		}
 
-		// The game fires one MenuEntryAdded per default option it adds for the hovered chat
-		// line (e.g. "Report", "Add friend") - all tied to the *same* line widget, since OSRS
-		// renders each chat line as a single text widget rather than separate name/message
-		// widgets. Dedup against whatever's already in the menu this hover so "Translate"
-		// doesn't get appended once per default option.
-		for (MenuEntry existing : client.getMenuEntries())
+		Point mouse = client.getMouseCanvasPosition();
+		for (Widget child : children)
 		{
-			if (RIGHT_CLICK_OPTION.equals(existing.getOption()) && existing.getParam1() == widget.getId())
+			if (child == null || child.isHidden())
+			{
+				continue;
+			}
+			String widgetText = child.getText();
+			if (widgetText == null || widgetText.isEmpty())
+			{
+				continue;
+			}
+			if (!child.getBounds().contains(mouse.getX(), mouse.getY()))
+			{
+				continue;
+			}
+
+			System.err.println("[Offline Translate] chat line under cursor: widgetId=" + child.getId() + " text=\"" + widgetText + "\"");
+
+			ChatLineMatch match = findChatLine(widgetText);
+			if (match == null)
+			{
+				System.err.println("[Offline Translate] chat line under cursor but no matching MessageNode found: text=\"" + widgetText + "\"");
+				return;
+			}
+			if (!TRANSLATABLE_TYPES.contains(match.type))
 			{
 				return;
 			}
-		}
 
-		ChatLineMatch match = findChatLine(widgetText);
-		if (match == null)
-		{
-			System.err.println("[Offline Translate] chat line widget hovered but no matching MessageNode found: text=\"" + widgetText + "\"");
+			String localName = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : null;
+			if (localName != null && localName.equalsIgnoreCase(match.sender))
+			{
+				return;
+			}
+
+			String sender = match.sender;
+			String message = match.message;
+			lastMessageByPlayer.put(sender, message);
+
+			client.createMenuEntry(-1)
+				.setOption(RIGHT_CLICK_OPTION)
+				.setTarget(match.sender)
+				.setType(MenuAction.RUNELITE)
+				.onClick(e -> {
+					System.err.println("[Offline Translate] chat line \"Translate\" clicked: sender=" + sender + " message=\"" + message + "\"");
+					detectionExecutor.submit(() -> handleManualTranslate(sender, message));
+				});
 			return;
 		}
-		if (!TRANSLATABLE_TYPES.contains(match.type))
-		{
-			System.err.println("[Offline Translate] chat line matched but type not translatable: type=" + match.type);
-			return;
-		}
-
-		String localName = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : null;
-		if (localName != null && localName.equalsIgnoreCase(match.sender))
-		{
-			return;
-		}
-
-		String sender = match.sender;
-		String message = match.message;
-		lastMessageByPlayer.put(sender, message);
-
-		client.createMenuEntry(-1)
-			.setOption(RIGHT_CLICK_OPTION)
-			.setTarget(entry.getTarget())
-			.setType(MenuAction.RUNELITE)
-			.setParam0(event.getActionParam0())
-			.setParam1(widget.getId())
-			.onClick(e -> {
-				System.err.println("[Offline Translate] chat line \"Translate\" clicked: sender=" + sender + " message=\"" + message + "\"");
-				detectionExecutor.submit(() -> handleManualTranslate(sender, message));
-			});
 	}
 
 	/**
