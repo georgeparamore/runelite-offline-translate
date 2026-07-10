@@ -6,23 +6,31 @@ import com.offlinetranslate.model.ModelManager;
 import com.offlinetranslate.model.PackDirection;
 import com.offlinetranslate.model.PackStatus;
 import com.offlinetranslate.translate.TranslationEngine;
-import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.SwingUtilities;
 import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.FontManager;
+import net.runelite.client.ui.PluginPanel;
 
 /**
  * One row in the language pack manager: a language, its incoming (lang-&gt;English) and
- * outgoing (English-&gt;lang) pack status, and download buttons for each.
+ * outgoing (English-&gt;lang) pack status, and download buttons for each. Stacked vertically
+ * (name on its own line, buttons below) rather than side-by-side, since the sidebar is only
+ * {@link PluginPanel#PANEL_WIDTH} wide - a horizontal layout was squeezing longer language
+ * names (e.g. "Indonesian", "Portuguese") down to nothing next to two buttons.
  */
 class LanguagePackRowPanel extends JPanel
 {
+	private static final int ROW_WIDTH = PluginPanel.PANEL_WIDTH - 20;
+
 	private final ModelManager modelManager;
 	private final TranslationEngine translationEngine;
 	private final Language language;
@@ -37,31 +45,53 @@ class LanguagePackRowPanel extends JPanel
 		this.translationEngine = translationEngine;
 		this.language = language;
 
-		setLayout(new BorderLayout(5, 2));
-		setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
+		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+		setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createMatteBorder(0, 0, 1, 0, ColorScheme.DARK_GRAY_COLOR),
+			BorderFactory.createEmptyBorder(6, 8, 6, 8)));
 		setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		setMaximumSize(new Dimension(Integer.MAX_VALUE, getMaximumSize().height));
+		setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		JLabel nameLabel = new JLabel(language.getFlagEmoji() + " " + language.getDisplayName());
-		add(nameLabel, BorderLayout.WEST);
+		JLabel nameLabel = new JLabel(language.getFlagEmoji() + "  " + language.getDisplayName());
+		nameLabel.setFont(FontManager.getRunescapeBoldFont());
+		nameLabel.setForeground(ColorScheme.TEXT_COLOR);
+		nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+		add(nameLabel);
 
-		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+		add(javax.swing.Box.createVerticalStrut(4));
+
+		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
 		buttons.setOpaque(false);
-		incomingButton.setToolTipText("Download " + language.getDisplayName() + " -> English pack (translate their chat to you)");
-		outgoingButton.setToolTipText("Download English -> " + language.getDisplayName() + " pack (translate your /t messages to them)");
+		buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
+		buttons.setMaximumSize(new Dimension(ROW_WIDTH, 30));
+		incomingButton.setToolTipText("Their " + language.getDisplayName() + " chat -> translated to you");
+		outgoingButton.setToolTipText("Your outgoing messages -> translated to " + language.getDisplayName());
 		incomingButton.addActionListener(e -> download(PackDirection.TO_ENGLISH, incomingButton));
 		outgoingButton.addActionListener(e -> download(PackDirection.FROM_ENGLISH, outgoingButton));
+		styleButton(incomingButton);
+		styleButton(outgoingButton);
 		buttons.add(incomingButton);
 		if (language.supportsTranslationFromEnglish())
 		{
 			buttons.add(outgoingButton);
 		}
-		add(buttons, BorderLayout.EAST);
+		add(buttons);
 
-		progressBar.setPreferredSize(new Dimension(100, 12));
+		progressBar.setAlignmentX(Component.LEFT_ALIGNMENT);
+		progressBar.setMaximumSize(new Dimension(ROW_WIDTH, 10));
+		progressBar.setPreferredSize(new Dimension(ROW_WIDTH, 10));
 		progressBar.setVisible(false);
-		add(progressBar, BorderLayout.SOUTH);
+		add(progressBar);
 
 		refresh();
+	}
+
+	private static void styleButton(JButton button)
+	{
+		button.setFont(FontManager.getRunescapeSmallFont());
+		button.setMargin(new java.awt.Insets(2, 8, 2, 8));
+		button.setFocusPainted(false);
 	}
 
 	void refresh()

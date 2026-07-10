@@ -6,6 +6,7 @@ import com.offlinetranslate.model.ModelManager;
 import com.offlinetranslate.model.PackDirection;
 import com.offlinetranslate.translate.TranslationEngine;
 import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.GridLayout;
 import javax.inject.Inject;
@@ -20,6 +21,7 @@ import javax.swing.JScrollPane;
 import javax.swing.SwingUtilities;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 
 public class OfflineTranslatePanel extends PluginPanel
@@ -50,9 +52,10 @@ public class OfflineTranslatePanel extends PluginPanel
 		JPanel top = new JPanel();
 		top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
 		top.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		top.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+		top.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
 		top.add(sectionLabel("Your language"));
+		top.add(javax.swing.Box.createVerticalStrut(3));
 		preferredLanguageBox = new JComboBox<>(Language.values());
 		preferredLanguageBox.setSelectedItem(config.preferredLanguage());
 		preferredLanguageBox.addActionListener(e -> {
@@ -60,17 +63,19 @@ public class OfflineTranslatePanel extends PluginPanel
 			configManager.setConfiguration(OfflineTranslateConfig.GROUP, "preferredLanguage", selected);
 			translationEngine.warmUp(selected, PackDirection.TO_ENGLISH);
 		});
+		stretchWidth(preferredLanguageBox);
 		top.add(preferredLanguageBox);
 
+		top.add(javax.swing.Box.createVerticalStrut(6));
 		autoDetectBox = new JCheckBox("Auto-detect chat language", config.autoDetect());
-		autoDetectBox.setOpaque(false);
-		autoDetectBox.setForeground(ColorScheme.TEXT_COLOR);
+		styleCheckbox(autoDetectBox);
 		autoDetectBox.addActionListener(e -> configManager.setConfiguration(
 			OfflineTranslateConfig.GROUP, "autoDetect", autoDetectBox.isSelected()));
 		top.add(autoDetectBox);
 
-		top.add(javax.swing.Box.createVerticalStrut(8));
-		top.add(sectionLabel("Output language (for /t)"));
+		top.add(sectionDivider());
+		top.add(sectionLabel("Output language (for the translate hotkey)"));
+		top.add(javax.swing.Box.createVerticalStrut(3));
 		outputLanguageBox = new JComboBox<>(java.util.Arrays.stream(Language.values())
 			.filter(Language::supportsTranslationFromEnglish)
 			.toArray(Language[]::new));
@@ -80,19 +85,21 @@ public class OfflineTranslatePanel extends PluginPanel
 			configManager.setConfiguration(OfflineTranslateConfig.GROUP, "outputLanguage", selected);
 			translationEngine.warmUp(selected, PackDirection.FROM_ENGLISH);
 		});
+		stretchWidth(outputLanguageBox);
 		top.add(outputLanguageBox);
 
+		top.add(javax.swing.Box.createVerticalStrut(6));
 		autoUpdateOutputBox = new JCheckBox("Auto-update to last speaker's language", config.autoUpdateOutputLanguage());
-		autoUpdateOutputBox.setOpaque(false);
-		autoUpdateOutputBox.setForeground(ColorScheme.TEXT_COLOR);
+		styleCheckbox(autoUpdateOutputBox);
 		autoUpdateOutputBox.addActionListener(e -> configManager.setConfiguration(
 			OfflineTranslateConfig.GROUP, "autoUpdateOutputLanguage", autoUpdateOutputBox.isSelected()));
 		top.add(autoUpdateOutputBox);
 
-		top.add(javax.swing.Box.createVerticalStrut(10));
+		top.add(sectionDivider());
 		top.add(sectionLabel("Language packs"));
-		packListPanel.setLayout(new GridLayout(0, 1, 0, 2));
-		packListPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		top.add(javax.swing.Box.createVerticalStrut(3));
+		packListPanel.setLayout(new GridLayout(0, 1));
+		packListPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		for (Language language : Language.values())
 		{
 			if (language.isEnglish())
@@ -103,25 +110,59 @@ public class OfflineTranslatePanel extends PluginPanel
 		}
 		JScrollPane packScroll = new JScrollPane(packListPanel);
 		packScroll.setPreferredSize(new Dimension(0, 220));
-		packScroll.setBorder(BorderFactory.createEmptyBorder());
+		packScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 220));
+		packScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+		packScroll.setBorder(BorderFactory.createLineBorder(ColorScheme.DARK_GRAY_COLOR));
 		top.add(packScroll);
 
 		add(top, BorderLayout.NORTH);
 
 		JPanel logSection = new JPanel(new BorderLayout());
 		logSection.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		logSection.setBorder(BorderFactory.createEmptyBorder(4, 8, 8, 8));
-		logSection.add(sectionLabel("Translated messages"), BorderLayout.NORTH);
+		logSection.setBorder(BorderFactory.createEmptyBorder(0, 10, 10, 10));
+		JPanel logHeader = new JPanel();
+		logHeader.setLayout(new BoxLayout(logHeader, BoxLayout.Y_AXIS));
+		logHeader.setOpaque(false);
+		logHeader.add(sectionDivider());
+		logHeader.add(sectionLabel("Translated messages"));
+		logSection.add(logHeader, BorderLayout.NORTH);
 		logSection.add(logPanel, BorderLayout.CENTER);
 		add(logSection, BorderLayout.CENTER);
+	}
+
+	private static void stretchWidth(javax.swing.JComponent component)
+	{
+		component.setAlignmentX(Component.LEFT_ALIGNMENT);
+		component.setMaximumSize(new Dimension(Integer.MAX_VALUE, component.getPreferredSize().height));
+	}
+
+	private static void styleCheckbox(JCheckBox checkbox)
+	{
+		checkbox.setOpaque(false);
+		checkbox.setForeground(ColorScheme.TEXT_COLOR);
+		checkbox.setFont(FontManager.getRunescapeSmallFont());
+		checkbox.setAlignmentX(Component.LEFT_ALIGNMENT);
+		checkbox.setFocusPainted(false);
 	}
 
 	private static JLabel sectionLabel(String text)
 	{
 		JLabel label = new JLabel(text);
+		label.setFont(FontManager.getRunescapeBoldFont());
 		label.setForeground(ColorScheme.BRAND_ORANGE);
-		label.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0));
+		label.setAlignmentX(Component.LEFT_ALIGNMENT);
 		return label;
+	}
+
+	private static JPanel sectionDivider()
+	{
+		JPanel divider = new JPanel();
+		divider.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		divider.setAlignmentX(Component.LEFT_ALIGNMENT);
+		divider.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+		divider.setPreferredSize(new Dimension(0, 1));
+		divider.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
+		return divider;
 	}
 
 	/** Appends a translated incoming message to the side panel log. Safe to call off the EDT. */

@@ -110,4 +110,11 @@ public enum Language
 		}
 		return null;
 	}
+
+	/** Used directly by Swing combo box rendering - without this override they'd show the raw enum constant name (e.g. "INDONESIAN") instead of a flag and proper display name. */
+	@Override
+	public String toString()
+	{
+		return flagEmoji + "  " + displayName;
+	}
 }
