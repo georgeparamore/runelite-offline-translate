@@ -154,15 +154,23 @@ issues are the most likely thing to show up if you add a new language or swap mo
     `/@g`, `/@gc`, `/@f`, `/@p` - the same set RuneLingual's `PlayerMessage.java` checks for
     the same reason), translates only the message body, and reassembles prefix + translation
     before writing back.
-13. **The "Translated messages" side panel log was unreachable, not just broken** - diagnostics
-    confirmed translate-and-log was succeeding on every incoming message, but nothing ever
-    appeared, because RuneLite's sidebar doesn't wrap plugin panels in a scroll container of its
-    own. The panel used to split content between `BorderLayout.NORTH` (selectors, checkboxes,
-    the pack list) and `BorderLayout.CENTER` (the log) - once `NORTH` grew taller than the
-    visible sidebar area, `CENTER` was squeezed to near zero with literally no scrollbar
-    anywhere that reached it. Fixed by building the whole panel as one continuous `BoxLayout`
-    column and wrapping that single column in one outer `JScrollPane`, so scrolling the sidebar
-    now reaches every section including the log.
+13. **First (incorrect) attempt at the "Translated messages" log bug** - diagnostics confirmed
+    translate-and-log was succeeding on every incoming message, but nothing ever appeared.
+    Initially assumed to be a scroll-reachability problem and "fixed" by wrapping the whole
+    panel in a manual outer `JScrollPane`. That did not fix it (confirmed live) - see item 14
+    for the actual cause, discovered afterward by reading RuneLite's own `PluginPanel` source.
+14. **The real cause: `OfflineTranslatePanel` was missing `@Singleton`.** Without it, Guice
+    handed out a *separate instance* to every injection point - one for
+    `OfflineTranslatePlugin.panel` (the instance actually wrapped into the `NavigationButton`
+    and shown in the sidebar), and a different one for `ChatTranslationService.panel` (the
+    instance `logTranslatedMessage()`/`setDetectedOutputLanguage()` were actually called on).
+    Every translation was logging correctly to an invisible clone panel that was never attached
+    to anything on screen - not a layout bug at all. Also confirmed by reading RuneLite's
+    `PluginPanel.java` that it already wraps every plugin panel in its own outer `JScrollPane`
+    before adding it to the sidebar (`ClientUI.addNavigation` adds `getWrappedPanel()`, not the
+    panel itself), so the manual outer scrollpane from item 13 was redundant and has been
+    removed - back to a single `BoxLayout` column, same pattern already proven to work for the
+    pack list.
 
 **Not yet verified - confirm on your own client:**
 - The redesigned translate hotkey now that channel-prefix preservation and incoming detection
@@ -179,10 +187,10 @@ issues are the most likely thing to show up if you add a new language or swap mo
   player-menu-option slots system-wide, and another enabled plugin could already have claimed
   all of them, which would make registration silently no-op. Check the console for
   `player menu options after registration: [...]` after logging in.
-- The side panel log scroll fix (item 13) - the log itself was confirmed logging correctly
-  before this fix, so this should just be a matter of scrolling down, but worth a live check
-  that the outer scroll pane behaves (mouse wheel, scrollbar drag) as expected in RuneLite's
-  actual sidebar rather than a plain Swing test harness.
+- The `@Singleton` fix (item 14) for the side panel log - not yet confirmed live. Should now
+  show both incoming auto-detected translations and right-click manual translations in the
+  "Translated messages" section without needing to scroll unusually far (the panel is a normal
+  single-column layout now, same as before any of the log-visibility fixes).
 - Translation quality on further languages/sentences - greedy decoding (not beam search) was a
   deliberate v1 simplicity tradeoff, so expect occasional rougher phrasing on longer or more
   ambiguous input than the short chat-style lines tested above.
