@@ -130,23 +130,45 @@ issues are the most likely thing to show up if you add a new language or swap mo
      detections from spurious ones here. Net effect: short greetings/single words won't get
      flagged (an accepted tradeoff), but full sentences are genuinely reliable.
 
+10. **In-chat flag badges were a solid-color box with a 2-letter code, not a flag** - the
+    original design deliberately avoided drawing flag emoji glyphs (Java's `Graphics2D`
+    doesn't reliably compose multi-codepoint emoji sequences into the right glyph even on
+    platforms with a color-emoji font), but confirmed live that just read as an arbitrary
+    colored box. Replaced with real per-country flag patterns - horizontal/vertical color
+    bands, simplified Nordic crosses, Czech's wedge, Vietnam's star simplified to a dot - drawn
+    directly via `Graphics2D` shapes. Same zero-font-dependency safety, now actually
+    recognizable as flags. See `flagRenderTest` to preview all of them without a client.
+11. **Right-click "Translate" is now implemented**, via `MenuManager.addPlayerMenuItem()` - the
+    same mechanism "Add friend"/"Report" use, so it works on both world player right-clicks and
+    chat name right-clicks without needing to reverse-engineer widget/menu-action matching for
+    "this specifically is a chat right-click" (the earlier, riskier approach this was
+    originally deferred over). Translates whichever player's most recent tracked message into
+    your preferred language and logs it to the side panel.
+12. **Translating the entire typed line, including OSRS's own chat-channel-switching prefixes,
+    silently broke which channel the message actually went to.** Typing `/hello` (friends
+    chat) or `//hello` (clan chat) and using the translate hotkey fed the *whole* string,
+    prefix included, into the translation model - garbling or losing the routing prefix
+    entirely, confirmed live: a clan/FC message came out prefixed with `#` and untranslated
+    instead of routing and translating correctly. `OutgoingTranslateKeyListener` now detects
+    and strips these prefixes first (`/`, `//`, `///`, `////`, `/c `, `/g `, `/gc `, `/@c`,
+    `/@g`, `/@gc`, `/@f`, `/@p` - the same set RuneLingual's `PlayerMessage.java` checks for
+    the same reason), translates only the message body, and reassembles prefix + translation
+    before writing back.
+
 **Not yet verified - confirm on your own client:**
-- The redesigned translate hotkey (default Ctrl+T, `OutgoingTranslateKeyListener`) now that
-  incoming detection actually works - full end-to-end incoming flag + side-panel-log test.
+- The redesigned translate hotkey now that channel-prefix preservation and incoming detection
+  are both fixed - full end-to-end test across public chat, PMs, friends chat, and clan chat.
 - The public/clan/FC chatbox display lag when using the translate hotkey - confirmed the
   underlying translation and send are both correct, but the box itself doesn't visually update
   before you press Enter (unlike PMs, which do). Two rebuild-script attempts
-  (`CHAT_TEXT_INPUT_REBUILD`, `BUILD_CHATBOX`) haven't fixed it; parked as a known cosmetic
-  limitation since sending itself works.
+  (`CHAT_TEXT_INPUT_REBUILD`, `BUILD_CHATBOX`) plus a same-tick-ordering fix (deferring the
+  rebuild to the next tick via `invokeLater`) haven't confirmed-fixed it yet.
+- Right-click "Translate" - implemented but not yet exercised live (both the world-player and
+  chat-name click paths, and whether the last-message tracking correctly follows the right
+  player when there are several people talking).
 - Translation quality on further languages/sentences - greedy decoding (not beam search) was a
   deliberate v1 simplicity tradeoff, so expect occasional rougher phrasing on longer or more
   ambiguous input than the short chat-style lines tested above.
-- The right-click "Translate" option on individual chat messages from the original design
-  wasn't implemented. Reliably detecting "this menu is a chat-message right-click" (vs. any
-  other right-click context) needs real client testing to get the widget/menu-action matching
-  right, and shipping a guessed version risked a "Translate" option showing up in the wrong
-  place. The side-panel log covers the same need (translated incoming messages without
-  clicking anything) and was the safer thing to ship first.
 
 **First things to do locally:** `./gradlew runOfflineTranslate`, log in, download a pack from
 the side panel, and try `/t` with a friend or alt account - that exercises the two pieces that

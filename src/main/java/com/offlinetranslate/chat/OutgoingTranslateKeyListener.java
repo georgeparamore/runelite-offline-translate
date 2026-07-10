@@ -40,6 +40,20 @@ import net.runelite.client.input.KeyListener;
 @Singleton
 public class OutgoingTranslateKeyListener implements KeyListener
 {
+	/**
+	 * OSRS's own chat-channel-switching prefixes, checked longest/most-specific first so e.g.
+	 * "/@gc" (guest clan) isn't mistaken for "/@g" (a shorter, different prefix it textually
+	 * starts with). Confirmed live: translating the *whole* typed string including one of
+	 * these garbled/lost the routing prefix, breaking which channel the message actually went
+	 * to. Same set of prefixes RuneLingual's PlayerMessage.java checks for the same reason.
+	 */
+	private static final String[] CHANNEL_PREFIXES = {
+		"/@gc", "/@c", "/@g", "/@f", "/@p",
+		"////", "///", "//",
+		"/gc ", "/g ", "/c ",
+		"/"
+	};
+
 	private final Client client;
 	private final ClientThread clientThread;
 	private final OfflineTranslateConfig config;
@@ -103,6 +117,15 @@ public class OutgoingTranslateKeyListener implements KeyListener
 		}
 		int finalSourceVar = sourceVar;
 
+		String channelPrefix = extractChannelPrefix(typed);
+		String body = typed.substring(channelPrefix.length());
+		System.err.println("[Offline Translate] channelPrefix=\"" + channelPrefix + "\" body=\"" + body + "\"");
+		if (body.trim().isEmpty())
+		{
+			System.err.println("[Offline Translate] nothing but a channel prefix typed, doing nothing");
+			return;
+		}
+
 		Language source = config.preferredLanguage();
 		Language target = config.outputLanguage();
 		System.err.println("[Offline Translate] source=" + source + " target=" + target);
@@ -131,8 +154,9 @@ public class OutgoingTranslateKeyListener implements KeyListener
 
 		try
 		{
-			String translated = translationEngine.translate(typed, source, target);
-			System.err.println("[Offline Translate] translated \"" + typed + "\" -> \"" + translated + "\"");
+			String translatedBody = translationEngine.translate(body, source, target);
+			String translated = channelPrefix + translatedBody;
+			System.err.println("[Offline Translate] translated \"" + body + "\" -> \"" + translatedBody + "\" (prefix \"" + channelPrefix + "\" preserved)");
 			// client.refreshChat() does not refresh the input line (only the message log).
 			// BUILD_CHATBOX was tried for the public-chat case specifically and confirmed live
 			// NOT to fix it either - unlike CHAT_TEXT_INPUT_REBUILD, which is the only one of
@@ -167,6 +191,18 @@ public class OutgoingTranslateKeyListener implements KeyListener
 	@Override
 	public void keyReleased(KeyEvent e)
 	{
+	}
+
+	private static String extractChannelPrefix(String typed)
+	{
+		for (String prefix : CHANNEL_PREFIXES)
+		{
+			if (typed.startsWith(prefix))
+			{
+				return prefix;
+			}
+		}
+		return "";
 	}
 
 	private boolean packsReady(Language source, Language target)
