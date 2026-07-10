@@ -5,11 +5,11 @@ import com.offlinetranslate.OfflineTranslateConfig;
 import com.offlinetranslate.model.ModelManager;
 import com.offlinetranslate.model.PackDirection;
 import com.offlinetranslate.translate.TranslationEngine;
-import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.GridLayout;
 import javax.inject.Inject;
+import javax.inject.Singleton;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.JCheckBox;
@@ -24,6 +24,18 @@ import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 
+/**
+ * Without {@code @Singleton} here, Guice hands out a separate instance to every injection point -
+ * one for {@code OfflineTranslatePlugin.panel} (the instance actually wrapped into the
+ * NavigationButton and shown in the sidebar) and a *different* one for
+ * {@code ChatTranslationService.panel} (the instance {@code logTranslatedMessage()} etc. are
+ * actually called on). Confirmed live: translation was succeeding and logging on every message
+ * (both auto-detect and the right-click path), yet nothing ever appeared - because it was being
+ * logged to an invisible clone that was never attached to anything. No layout/scrolling change
+ * could ever have fixed that; the panel that received the updates simply wasn't the one on
+ * screen.
+ */
+@Singleton
 public class OfflineTranslatePanel extends PluginPanel
 {
 	private final ConfigManager configManager;
@@ -46,18 +58,14 @@ public class OfflineTranslatePanel extends PluginPanel
 		this.modelManager = modelManager;
 		this.translationEngine = translationEngine;
 
-		setLayout(new BorderLayout());
-		setBackground(ColorScheme.DARK_GRAY_COLOR);
-
-		// Everything below - selectors, checkboxes, the pack list, and the translated-message
-		// log - is built as one continuous BoxLayout column ("top") and then the *entire* column
-		// is wrapped in a single outer JScrollPane. RuneLite's sidebar does not itself wrap
-		// plugin panels in a scroll container, so without this, content that grows taller than
-		// the visible sidebar area (as this panel does once the pack list and log are both
-		// present) is simply unreachable - not just "needs scrolling to see", but with literally
-		// no scrollbar anywhere that reaches it. Confirmed live: the log section was being logged
-		// to correctly every time but was permanently off-screen with nothing to scroll.
-		JPanel top = new JPanel();
+		// RuneLite's own PluginPanel (our superclass) already wraps every plugin panel in its
+		// own outer JScrollPane before adding it to the sidebar (see PluginPanel.java: this gets
+		// added to a BorderLayout.NORTH slot inside a JScrollPane, and ClientUI.addNavigation
+		// adds getWrappedPanel(), not this panel directly) - so a manual outer scrollpane here
+		// would just be a redundant, confusing second layer. A single BoxLayout column is all
+		// this needs; RuneLite's own scrolling reaches every section in it, same as it already
+		// does for every other plugin's side panel.
+		JPanel top = this;
 		top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
 		top.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		top.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -135,12 +143,6 @@ public class OfflineTranslatePanel extends PluginPanel
 		logPanel.setPreferredSize(new Dimension(0, 300));
 		logPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 300));
 		top.add(logPanel);
-
-		JScrollPane outerScroll = new JScrollPane(top);
-		outerScroll.setBorder(BorderFactory.createEmptyBorder());
-		outerScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-		outerScroll.getVerticalScrollBar().setUnitIncrement(16);
-		add(outerScroll, BorderLayout.CENTER);
 	}
 
 	private static void stretchWidth(javax.swing.JComponent component)
