@@ -85,7 +85,12 @@ public class TranslationEngine
 		{
 			return text;
 		}
-		return translate(text, language, PackDirection.FROM_ENGLISH);
+		String translated = translate(text, language, PackDirection.FROM_ENGLISH);
+		// Romanize non-Latin-script output before it can ever reach the chatbox - see
+		// Language's class javadoc. Deliberately done here, at the single choke point every
+		// outgoing English->X translation passes through (both translateFromEnglish() callers
+		// and the pivoting translate(source, target) below), rather than at each call site.
+		return language.usesLatinScript() ? translated : Romanizer.toLatin(translated);
 	}
 
 	/**

@@ -93,6 +93,32 @@ public final class FlagIconFactory
 			case AFRIKAANS:
 				horizontalBands(g, width, height, GREEN, GOLD, BLACK);
 				break;
+			// Non-Latin-script languages - see Language.java's class javadoc. The flag badge
+			// itself is just colored shapes, unaffected by the script-rendering problem that
+			// governs the translated text.
+			case ARABIC:
+				// Simplified pan-Arab colors rather than any one specific country's flag, since
+				// "Arabic" isn't tied to a single nation here.
+				horizontalBands(g, width, height, BLACK, WHITE, GREEN);
+				break;
+			case RUSSIAN:
+				horizontalBands(g, width, height, WHITE, BLUE, RED);
+				break;
+			case UKRAINIAN:
+				horizontalBands(g, width, height, BLUE, YELLOW);
+				break;
+			case HINDI:
+				horizontalBands(g, width, height, SAFFRON, WHITE, GREEN);
+				break;
+			case CHINESE:
+				solidWithCornerMark(g, width, height, RED, YELLOW);
+				break;
+			case JAPANESE:
+				solidWithCenterMark(g, width, height, WHITE, RED);
+				break;
+			case KOREAN:
+				solidWithCenterMark(g, width, height, WHITE, BLUE);
+				break;
 			case ENGLISH:
 			default:
 				horizontalBands(g, width, height, BLUE, WHITE, RED);
@@ -107,6 +133,7 @@ public final class FlagIconFactory
 	private static final Color GOLD = new Color(0xFF, 0xCE, 0x00);
 	private static final Color YELLOW = new Color(0xFF, 0xC4, 0x00);
 	private static final Color GREEN = new Color(0x00, 0x8C, 0x45);
+	private static final Color SAFFRON = new Color(0xFF, 0x99, 0x33);
 
 	private static void horizontalBands(Graphics2D g, int width, int height, Color... colors)
 	{
@@ -166,5 +193,15 @@ public final class FlagIconFactory
 		g.setColor(mark);
 		int size = Math.max(2, Math.min(width, height) / 3);
 		g.fillOval(width / 2 - size / 2, height / 2 - size / 2, size, size);
+	}
+
+	/** Same idea as {@link #solidWithCenterMark}, but the mark sits in the upper-left corner (e.g. China's star position) instead of dead center, so it doesn't read identically to Vietnam's flag at a glance. */
+	private static void solidWithCornerMark(Graphics2D g, int width, int height, Color field, Color mark)
+	{
+		g.setColor(field);
+		g.fillRect(0, 0, width, height);
+		g.setColor(mark);
+		int size = Math.max(2, Math.min(width, height) / 3);
+		g.fillOval(Math.max(1, width / 4 - size / 2), Math.max(1, height / 4 - size / 2), size, size);
 	}
 }

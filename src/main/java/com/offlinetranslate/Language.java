@@ -6,17 +6,20 @@ package com.offlinetranslate;
  * Model availability is asymmetric in upstream Helsinki-NLP/OPUS-MT: some languages only have
  * a to-English model (no English back-translation model exists).
  * <p>
- * Deliberately Latin-script only. The OSRS client's own chat font only has glyphs for English
- * plus accented European characters (é, ñ, ü, and similar) - confirmed live: a correctly
- * translated Arabic message ("hi" -> "مرحباً", verified correct in the console) still rendered
- * as "?" in the actual game chat, because the game engine itself has no glyphs to draw it with,
- * not because of anything wrong with the translation. That's true for any script the client's
- * font doesn't cover, for both sending and receiving, regardless of which client/player is
- * involved - so Chinese, Japanese, Korean, Arabic, Hindi, Russian, and Ukrainian were removed
- * rather than shipping languages that can only ever show as boxes in the one place (the actual
- * chatbox) most of this plugin exists for. They'd still work fine in the side panel log, which
- * is Java-rendered text and unaffected by the game's font - the removal is specifically about
- * not offering languages that are broken for the in-game chat use case.
+ * <b>Non-Latin-script languages and the OSRS font problem.</b> The OSRS client's own chat font
+ * only has glyphs for English plus accented European characters (é, ñ, ü, and similar) -
+ * confirmed live: a correctly translated Arabic message ("hi" -> "مرحباً", verified correct in
+ * the console) still rendered as "?" in the actual game chat, because the game engine itself has
+ * no glyphs to draw it with, not because of anything wrong with the translation. That's only a
+ * problem for the *outgoing* direction, though: an incoming foreign message gets translated for
+ * display in this plugin's own side panel, which is ordinary Java-rendered text and has no such
+ * limitation - the font gap only bites when translated text has to be written into the actual
+ * OSRS chatbox to be sent. So rather than removing these languages outright (their original
+ * treatment), {@link #usesLatinScript()} marks which ones need romanizing before being written
+ * to the chatbox - see {@code TranslationEngine.translateFromEnglish()} for where that happens,
+ * via ICU4J's "Any-Latin; Latin-ASCII" transform (e.g. Arabic "مرحبا" -> "mrhba"). It's a lossy
+ * approximation, not a proper transliteration scheme, but it's guaranteed renderable, which
+ * native script text in this client never was.
  */
 public enum Language
 {
@@ -37,7 +40,21 @@ public enum Language
 	VIETNAMESE("vi", "Vietnamese", "🇻🇳", "vi", "vi"),
 	INDONESIAN("id", "Indonesian", "🇮🇩", "id", "id"),
 	HUNGARIAN("hu", "Hungarian", "🇭🇺", "hu", "hu"),
-	AFRIKAANS("af", "Afrikaans", "🇿🇦", "af", "af");
+	AFRIKAANS("af", "Afrikaans", "🇿🇦", "af", "af"),
+	// Non-Latin-script - see the class javadoc. Detection and incoming (->English) translation
+	// work exactly like any other language; outgoing (English->) gets romanized before it's
+	// written to the chatbox. Repo names verified live against huggingface.co (not guessed) -
+	// Japanese in particular has an asymmetric, easy-to-get-wrong upstream naming quirk: the
+	// to-English model repo uses "ja" but the from-English one uses "jap".
+	ARABIC("ar", "Arabic", "🇸🇦", "ar", "ar", false),
+	RUSSIAN("ru", "Russian", "🇷🇺", "ru", "ru", false),
+	UKRAINIAN("uk", "Ukrainian", "🇺🇦", "uk", "uk", false),
+	HINDI("hi", "Hindi", "🇮🇳", "hi", "hi", false),
+	CHINESE("zh", "Chinese", "🇨🇳", "zh", "zh", false),
+	JAPANESE("ja", "Japanese", "🇯🇵", "ja", "jap", false),
+	// No English->Korean model available upstream (Xenova/opus-mt-en-ko/-kor don't exist,
+	// confirmed live) - same asymmetric situation as Polish, just for a non-Latin script.
+	KOREAN("ko", "Korean", "🇰🇷", "ko", null, false);
 
 	/** ISO 639-1-ish code used by the offline language detector and as this enum's stable id. */
 	private final String code;
@@ -51,14 +68,21 @@ public enum Language
 	 * English, but not selected as an outgoing translation target).
 	 */
 	private final String fromEnglishModelCode;
+	private final boolean usesLatinScript;
 
 	Language(String code, String displayName, String flagEmoji, String toEnglishModelCode, String fromEnglishModelCode)
+	{
+		this(code, displayName, flagEmoji, toEnglishModelCode, fromEnglishModelCode, true);
+	}
+
+	Language(String code, String displayName, String flagEmoji, String toEnglishModelCode, String fromEnglishModelCode, boolean usesLatinScript)
 	{
 		this.code = code;
 		this.displayName = displayName;
 		this.flagEmoji = flagEmoji;
 		this.toEnglishModelCode = toEnglishModelCode;
 		this.fromEnglishModelCode = fromEnglishModelCode;
+		this.usesLatinScript = usesLatinScript;
 	}
 
 	public String getCode()
@@ -79,6 +103,12 @@ public enum Language
 	public boolean isEnglish()
 	{
 		return this == ENGLISH;
+	}
+
+	/** False for languages whose native script the OSRS chat font can't render - see the class javadoc. Outgoing translations into these get romanized before being written to the chatbox. */
+	public boolean usesLatinScript()
+	{
+		return usesLatinScript;
 	}
 
 	public boolean supportsTranslationFromEnglish()

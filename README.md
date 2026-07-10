@@ -220,6 +220,29 @@ issues are the most likely thing to show up if you add a new language or swap mo
     state anyone wants - plus a "Delete" button with a confirmation dialog, and every successful
     download/delete now posts an in-game chat confirmation (there was previously no feedback at
     all that a background download had actually finished).
+21. **Non-Latin-script languages re-added, with romanized outgoing translations** - Arabic,
+    Russian, Ukrainian, Hindi, Chinese, Japanese, and Korean, previously removed outright (see
+    "Language pack coverage" below) because a correctly-translated non-Latin message still
+    rendered as `?` boxes in the actual OSRS chatbox (the client's own font has no glyphs for
+    these scripts). Rather than dropping the languages, `Language.usesLatinScript()` now
+    marks which ones need it, and `TranslationEngine.translateFromEnglish()` runs non-Latin
+    output through ICU4J's `Transliterator` ("Any-Latin; Latin-ASCII") before returning it -
+    e.g. English "hello" -> Arabic "مرحبا" -> romanized to something like "mrhba" before it's
+    ever written to the chatbox. This only applies to the *outgoing* direction; incoming
+    messages in these languages still translate and detect normally, since the side panel log
+    is ordinary Java-rendered text with no font restriction. Repo names for the new packs were
+    verified live against huggingface.co, not guessed - Japanese in particular has an
+    asymmetric upstream naming quirk (`opus-mt-ja-en` for to-English, but `opus-mt-en-jap`, not
+    `-ja`, for from-English), and Korean has no working from-English model published upstream at
+    all (same situation as Polish, just for a non-Latin script). New flag badges added for all
+    seven. `./gradlew romanizerSmokeTest` verifies the transliteration step itself produces
+    plain-ASCII output for a sample of each script, with no network or downloaded model needed.
+    Also caught live by making `ChatLanguageDetector`'s profile loading defensive (per-locale,
+    not one `readBuiltIn(fullList)` call - see that class): the bundled detector library has no
+    plain "zh" profile, only region-qualified "zh-CN"/"zh-TW", so Chinese detection would have
+    silently never fired at all had the loading not been made per-locale. Requesting "zh-CN"
+    specifically fixed it without affecting `Language.fromCode()` afterward, since
+    `LdLocale.getLanguage()` strips the region back off.
 
 **Not yet verified - confirm on your own client:**
 - The redesigned translate hotkey now that channel-prefix preservation and incoming detection
@@ -236,8 +259,13 @@ issues are the most likely thing to show up if you add a new language or swap mo
   the widget-to-`MessageNode` text-matching in `findChatLine()` finds a match (watch for `chat
   line under cursor but no matching MessageNode found`), and that right-clicking works both on
   the name portion and elsewhere in the message text on the same line.
-- The Spanish/Italian detection margin fix (item 18) and the "Show flags in chat" panel
-  checkbox / taller log (item 19) - none exercised live yet.
+- The Spanish/Italian detection margin fix (item 18), the "Show flags in chat" panel checkbox /
+  taller log (item 19), and the visual redesign (item 20) - none exercised live yet.
+- The romanized non-Latin-script languages (item 21) - the romanization step itself is verified
+  in isolation (`./gradlew romanizerSmokeTest`), but the full pipeline (download a pack, detect
+  incoming Arabic/Russian/etc. chat, translate it outgoing, confirm the romanized result both
+  writes into the chatbox correctly *and* actually sends without the game rejecting/mangling
+  it) has not been exercised against a real client at all.
 - Translation quality on further languages/sentences - greedy decoding (not beam search) was a
   deliberate v1 simplicity tradeoff, so expect occasional rougher phrasing on longer or more
   ambiguous input than the short chat-style lines tested above.
@@ -248,14 +276,21 @@ couldn't be tested without a real client.
 
 ## Language pack coverage
 
-Deliberately Latin-script only - see the note at the top of `Language.java` for why. The OSRS
-client's own chat font has no glyphs for non-Latin scripts (confirmed live: a correctly
-translated Arabic message rendered as `?` in the actual game chat, even though the translation
-itself was exactly right), so Chinese, Japanese, Korean, Arabic, Hindi, Russian, and Ukrainian
-were left out rather than shipping languages that can only ever show as boxes in the one place
-this plugin mainly exists for. They'd still render fine in the side panel log specifically
-(that's Java-rendered text, unaffected by the game's font) - the removal is about the in-game
-chat use case, not translation quality.
+Two categories, split by `Language.usesLatinScript()`:
+
+- **Latin-script languages** (Spanish, French, German, Italian, Dutch, Polish, Swedish, Finnish,
+  Danish, Czech, Vietnamese, Indonesian, Hungarian, Afrikaans) translate normally in both
+  directions - the OSRS chat font renders them correctly as-is.
+- **Non-Latin-script languages** (Arabic, Russian, Ukrainian, Hindi, Chinese, Japanese, Korean)
+  were originally left out entirely: the OSRS client's own chat font has no glyphs for these
+  scripts (confirmed live - a correctly translated Arabic message rendered as `?` in the actual
+  game chat, even though the translation itself was exactly right). Rather than dropping them,
+  incoming detection/translation for these languages works exactly like any other (the side
+  panel log is ordinary Java-rendered text, unaffected by the game's font), and *outgoing*
+  translations into them get romanized - converted to plain Latin letters via ICU4J - before
+  being written to the chatbox, so they're guaranteed renderable there too, at the cost of some
+  transliteration precision (it's a general script-to-Latin approximation, not a proper
+  per-language romanization scheme).
 
 Every pack is English-paired (translating between two non-English languages pivots through
 English). Not every language has a model in both directions - this reflects real gaps in the
@@ -265,7 +300,8 @@ implementation limitation:
 | Language | Incoming (→ English) | Outgoing (English →) |
 |---|---|---|
 | Spanish, French, German, Italian, Dutch, Swedish, Finnish, Danish, Czech, Vietnamese, Indonesian, Hungarian, Afrikaans | ✅ | ✅ |
-| Polish | ✅ | ❌ (no English→ model published upstream) |
+| Polish, Korean | ✅ | ❌ (no English→ model published upstream) |
+| Arabic, Russian, Ukrainian, Hindi, Chinese, Japanese | ✅ | ✅ (romanized to Latin letters before reaching the chatbox) |
 
 Vietnamese is Latin-script but diacritic-heavy (tone marks) - more likely than the others here
 to include characters outside the client font's coverage. Left in, but untested either way.

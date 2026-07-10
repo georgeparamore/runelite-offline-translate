@@ -36,6 +36,12 @@ dependencies {
     // Offline language detection (n-gram based, no network/model download required).
     implementation group: 'com.optimaize.languagedetector', name: 'language-detector', version: '0.6'
 
+    // Offline script romanization (Arabic/Cyrillic/Devanagari/CJK -> Latin letters) for the
+    // outgoing-translation direction into non-Latin-script languages - see Language.java's
+    // usesLatinScript() for why this exists. Ships its own transliteration rule data, no
+    // network access needed at runtime.
+    implementation group: 'com.ibm.icu', name: 'icu4j', version: '74.2'
+
     testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
     testImplementation group: 'junit', name: 'junit', version: '4.13.2'
 }
@@ -66,6 +72,13 @@ tasks.register('detectorSmokeTest', JavaExec) {
     description = 'Runs the offline language detector against known-good/known-bad phrases, no RuneLite client needed.'
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.offlinetranslate.DetectorSmokeTest'
+}
+
+tasks.register('romanizerSmokeTest', JavaExec) {
+    group = 'verification'
+    description = 'Verifies non-Latin-script romanization produces plain-ASCII output for every affected language, no RuneLite client or network needed.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.offlinetranslate.RomanizerSmokeTest'
 }
 
 tasks.register('smokeTest', JavaExec) {

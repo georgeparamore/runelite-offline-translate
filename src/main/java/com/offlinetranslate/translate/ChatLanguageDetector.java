@@ -48,41 +48,72 @@ public class ChatLanguageDetector
 	@Inject
 	public ChatLanguageDetector()
 	{
+		// readAllBuiltIn() (70 languages) was confirmed live to actively misdetect short
+		// chat-length text: "Hola" -> Turkish at 61% confidence, "Hola amigo" -> Somali at
+		// 96%, "hello" -> Breton at 72%, all wrong, all high-"confidence" - a well-known
+		// failure mode of n-gram detection on short text, where with too few n-grams to
+		// work with, an obscure unrelated language's profile can spuriously look like the
+		// closest match. Restricting the candidate set to only the languages this plugin
+		// actually supports removes that noise (Breton/Somali/Turkish/etc. are never
+		// competing for the guess), which is the standard mitigation for this problem.
+		//
+		// Loaded one locale at a time, not as a single readBuiltIn(fullList) call: that method's
+		// failure mode for a locale with no bundled profile wasn't verified against this specific
+		// library version before adding several new (non-Latin-script) languages here, and if it
+		// throws for the whole batch rather than skipping the one bad entry, a single wrong code
+		// would have silently disabled detection for every language, including the dozen already
+		// confirmed working - not worth risking. Skipping a language whose code turns out wrong
+		// just means that one language's auto-detect doesn't work, not that none of them do.
+		List<LanguageProfile> profiles = new ArrayList<>();
+		for (Language language : Language.values())
+		{
+			try
+			{
+				profiles.addAll(new LanguageProfileReader().readBuiltIn(java.util.Collections.singletonList(LdLocale.fromString(detectorLocaleFor(language)))));
+			}
+			catch (IOException e)
+			{
+				System.err.println("[Offline Translate] No language-detector profile for " + language + " (code \"" + detectorLocaleFor(language) + "\") - its auto-detect will never fire:");
+				e.printStackTrace();
+			}
+		}
+		System.err.println("[Offline Translate] language-detector loaded " + profiles.size() + " profiles");
+
 		LanguageDetector detector;
 		try
 		{
-			// readAllBuiltIn() (70 languages) was confirmed live to actively misdetect short
-			// chat-length text: "Hola" -> Turkish at 61% confidence, "Hola amigo" -> Somali at
-			// 96%, "hello" -> Breton at 72%, all wrong, all high-"confidence" - a well-known
-			// failure mode of n-gram detection on short text, where with too few n-grams to
-			// work with, an obscure unrelated language's profile can spuriously look like the
-			// closest match. Restricting the candidate set to only the languages this plugin
-			// actually supports removes that noise (Breton/Somali/Turkish/etc. are never
-			// competing for the guess), which is the standard mitigation for this problem.
-			List<LdLocale> supportedLocales = new ArrayList<>();
-			for (Language language : Language.values())
-			{
-				supportedLocales.add(LdLocale.fromString(language.getCode()));
-			}
-			List<LanguageProfile> profiles = new LanguageProfileReader().readBuiltIn(supportedLocales);
-			System.err.println("[Offline Translate] language-detector loaded " + profiles.size() + " profiles");
 			detector = LanguageDetectorBuilder.create(NgramExtractors.standard())
 				.withProfiles(profiles)
 				.build();
 		}
-		catch (IOException e)
+		catch (RuntimeException e)
 		{
 			// printStackTrace(), not log.warn(): SLF4J was observed defaulting to a no-op
 			// logger under the plain JavaExec launch, silently swallowing exactly this kind of
 			// diagnostic - this failure mode (profiles fail to load -> languageDetector stays
 			// null -> detect() always returns null unconditionally, for every message) would
 			// otherwise look identical to "detection ran but wasn't confident enough."
-			System.err.println("[Offline Translate] Failed to load language-detector profiles - auto-detect will be disabled:");
+			System.err.println("[Offline Translate] Failed to build language detector - auto-detect will be disabled:");
 			e.printStackTrace();
 			detector = null;
 		}
 		this.languageDetector = detector;
 		this.textObjectFactory = CommonTextObjectFactories.forDetectingShortCleanText();
+	}
+
+	/**
+	 * The language-detector library bundles Chinese as region-qualified profiles ("zh-CN"/
+	 * "zh-TW") rather than a plain "zh" - confirmed live: requesting "zh" threw
+	 * {@code IOException: No language file available named zh at languages/zh}, silently
+	 * disabling Chinese detection (caught by the per-locale try/catch in the constructor, so it
+	 * didn't take the other 20 languages down with it, but Chinese itself never worked). Using
+	 * "zh-CN" (Simplified) here doesn't break the round trip back to {@link Language#CHINESE}:
+	 * {@code LdLocale.getLanguage()} strips the region back off, returning plain "zh" again, so
+	 * {@link Language#fromCode} still matches correctly after detection.
+	 */
+	private static String detectorLocaleFor(Language language)
+	{
+		return language == Language.CHINESE ? "zh-CN" : language.getCode();
 	}
 
 	/**
