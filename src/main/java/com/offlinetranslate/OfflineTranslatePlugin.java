@@ -12,6 +12,7 @@ import javax.inject.Inject;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.input.KeyManager;
+import net.runelite.client.menus.MenuManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -38,6 +39,9 @@ public class OfflineTranslatePlugin extends Plugin
 
 	@Inject
 	private KeyManager keyManager;
+
+	@Inject
+	private MenuManager menuManager;
 
 	@Inject
 	private OfflineTranslateConfig config;
@@ -79,6 +83,12 @@ public class OfflineTranslatePlugin extends Plugin
 
 		eventBus.register(chatTranslationService);
 
+		// Adds "Translate" to every player's right-click menu (same mechanism "Add friend"/
+		// "Report" use) - works both on world player right-clicks and chat name right-clicks,
+		// since OSRS handles both through the same underlying player-option system. Click
+		// handling lives in ChatTranslationService.onMenuOptionClicked.
+		menuManager.addPlayerMenuItem(ChatTranslationService.RIGHT_CLICK_OPTION);
+
 		// Re-enabled with a redesigned mechanism: translate-in-place on a dedicated hotkey
 		// (default Ctrl+T), completely decoupled from Enter/sending. The earlier version tried
 		// to rewrite the chatbox text during the Enter keypress itself and was confirmed live
@@ -97,6 +107,7 @@ public class OfflineTranslatePlugin extends Plugin
 	{
 		clientToolbar.removeNavigation(navigationButton);
 		eventBus.unregister(chatTranslationService);
+		menuManager.removePlayerMenuItem(ChatTranslationService.RIGHT_CLICK_OPTION);
 		keyManager.unregisterKeyListener(outgoingTranslateKeyListener);
 		chatTranslationService.shutdown();
 		translationEngine.shutdown();

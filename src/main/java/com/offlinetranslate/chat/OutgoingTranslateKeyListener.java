@@ -140,8 +140,13 @@ public class OutgoingTranslateKeyListener implements KeyListener
 			// unconditionally here rather than branching: worst case one is a harmless no-op
 			// for a given widget, and this way nothing relies on an unconfirmed assumption
 			// about which specific script the public chatbox actually needs.
-			clientThread.invoke(() -> {
-				client.setVarcStrValue(finalSourceVar, translated);
+			// Split into two dispatches rather than one: writing the var and running the
+			// rebuild script in the very same clientThread task didn't fix the public-chat
+			// case even with the right-seeming scripts, so this tries a same-tick-ordering fix
+			// instead of a which-script fix - write the var now, rebuild on the *next* tick via
+			// invokeLater so the write has definitely landed before the rebuild reads it.
+			clientThread.invoke(() -> client.setVarcStrValue(finalSourceVar, translated));
+			clientThread.invokeLater(() -> {
 				client.runScript(ScriptID.CHAT_TEXT_INPUT_REBUILD, "");
 				client.runScript(ScriptID.BUILD_CHATBOX);
 			});

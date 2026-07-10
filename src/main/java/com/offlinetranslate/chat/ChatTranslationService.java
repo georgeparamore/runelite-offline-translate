@@ -22,11 +22,14 @@ import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.MenuAction;
 import net.runelite.api.MessageNode;
 import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ChatIconManager;
+import net.runelite.client.util.Text;
 
 /**
  * Detects the language of incoming chat and, where possible, translates it - flagging the
@@ -47,6 +50,16 @@ public class ChatTranslationService
 		ChatMessageType.CLAN_GUEST_CHAT
 	);
 
+	/**
+	 * Registered as a persistent player right-click option via {@code MenuManager}, the same
+	 * mechanism "Add friend"/"Report" use - it appears both on world player right-clicks and on
+	 * chat name right-clicks, since OSRS handles both through the same underlying player-option
+	 * system. Public so {@link com.offlinetranslate.OfflineTranslatePlugin} can register/
+	 * deregister it without duplicating the literal string.
+	 */
+	public static final String RIGHT_CLICK_OPTION = "Translate";
+	private static final int MAX_TRACKED_PLAYERS = 200;
+
 	private final Client client;
 	private final ClientThread clientThread;
 	private final OfflineTranslateConfig config;
@@ -63,6 +76,18 @@ public class ChatTranslationService
 	});
 	private final Map<Language, Integer> flagIconIds = new ConcurrentHashMap<>();
 	private final Set<Language> promptedThisSession = java.util.concurrent.ConcurrentHashMap.newKeySet();
+	// Bounded, insertion-order-evicting: tracks each player's most recent message so the
+	// right-click "Translate" option (which fires independently of auto-detect, and doesn't
+	// carry the message with it - only the player's name) has something to translate.
+	private final Map<String, String> lastMessageByPlayer = java.util.Collections.synchronizedMap(
+		new java.util.LinkedHashMap<String, String>(16, 0.75f, false)
+		{
+			@Override
+			protected boolean removeEldestEntry(Map.Entry<String, String> eldest)
+			{
+				return size() > MAX_TRACKED_PLAYERS;
+			}
+		});
 
 	@Inject
 	public ChatTranslationService(
@@ -89,14 +114,14 @@ public class ChatTranslationService
 	public void onChatMessage(ChatMessage event)
 	{
 		System.err.println("[Offline Translate] onChatMessage: type=" + event.getType() + " name=" + event.getName() + " message=\"" + event.getMessage() + "\" autoDetect=" + config.autoDetect());
-		if (!config.autoDetect() || !TRANSLATABLE_TYPES.contains(event.getType()))
+		if (!TRANSLATABLE_TYPES.contains(event.getType()))
 		{
-			System.err.println("[Offline Translate] skipped: autoDetect off or type not translatable");
+			System.err.println("[Offline Translate] skipped: type not translatable");
 			return;
 		}
 
 		String localName = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : null;
-		if (localName != null && localName.equalsIgnoreCase(net.runelite.client.util.Text.removeTags(event.getName())))
+		if (localName != null && localName.equalsIgnoreCase(normalizePlayerName(event.getName())))
 		{
 			System.err.println("[Offline Translate] skipped: message is from local player");
 			return;
@@ -106,7 +131,98 @@ public class ChatTranslationService
 		String sender = event.getName();
 		MessageNode messageNode = event.getMessageNode();
 
+		// Tracked unconditionally (not gated on autoDetect) so the right-click "Translate"
+		// option still has something to work with even if auto-detect is turned off.
+		lastMessageByPlayer.put(normalizePlayerName(sender), message);
+
+		if (!config.autoDetect())
+		{
+			System.err.println("[Offline Translate] skipped auto-detect: autoDetect off");
+			return;
+		}
+
 		detectionExecutor.submit(() -> handleMessage(sender, message, messageNode));
+	}
+
+	@Subscribe
+	public void onMenuOptionClicked(MenuOptionClicked event)
+	{
+		if (event.getMenuAction() != MenuAction.RUNELITE_PLAYER || !RIGHT_CLICK_OPTION.equals(event.getMenuOption()))
+		{
+			return;
+		}
+
+		String playerName = normalizePlayerName(event.getMenuTarget());
+		String message = lastMessageByPlayer.get(playerName);
+		if (message == null)
+		{
+			warn("No recent message from " + playerName + " to translate.");
+			return;
+		}
+
+		detectionExecutor.submit(() -> handleManualTranslate(playerName, message));
+	}
+
+	private void handleManualTranslate(String sender, String message)
+	{
+		Language preferred = config.preferredLanguage();
+		Language detected;
+		try
+		{
+			detected = languageDetector.detect(message);
+		}
+		catch (RuntimeException e)
+		{
+			System.err.println("[Offline Translate] Manual translate: detection failed:");
+			e.printStackTrace();
+			return;
+		}
+
+		if (detected == null)
+		{
+			warn("Couldn't confidently detect the language of " + sender + "'s last message.");
+			return;
+		}
+		if (detected == preferred)
+		{
+			warn(sender + "'s last message already looks like it's in your preferred language.");
+			return;
+		}
+
+		PackStatus toEnglishStatus = detected.isEnglish() ? PackStatus.READY : modelManager.getStatus(detected, PackDirection.TO_ENGLISH);
+		if (toEnglishStatus != PackStatus.READY)
+		{
+			if (config.promptToDownloadMissingPacks() && promptedThisSession.add(detected))
+			{
+				panel.promptDownloadMissingPack(detected, PackDirection.TO_ENGLISH);
+			}
+			else
+			{
+				warn("Missing the " + detected.getDisplayName() + " language pack - download it from the side panel first.");
+			}
+			return;
+		}
+
+		try
+		{
+			String translated = translationEngine.translate(message, detected, preferred);
+			panel.logTranslatedMessage(new TranslatedMessageEntry(sender, message, translated, detected));
+		}
+		catch (TranslationException e)
+		{
+			System.err.println("[Offline Translate] Manual translate failed for " + sender + ":");
+			e.printStackTrace();
+		}
+	}
+
+	/** Strips formatting tags and the " (level-N)" suffix RuneLite appends to player right-click targets, so names from chat events and right-click events compare equal. */
+	private static String normalizePlayerName(String rawName)
+	{
+		if (rawName == null)
+		{
+			return null;
+		}
+		return Text.removeTags(rawName).replaceAll("\\s*\\(level-\\d+\\)\\s*$", "").trim();
 	}
 
 	private void handleMessage(String sender, String message, MessageNode messageNode)
@@ -158,6 +274,7 @@ public class ChatTranslationService
 		try
 		{
 			String translated = translationEngine.translate(message, detected, preferred);
+			System.err.println("[Offline Translate] logging to panel: sender=" + sender + " translated=\"" + translated + "\"");
 			panel.logTranslatedMessage(new TranslatedMessageEntry(sender, message, translated, detected));
 		}
 		catch (TranslationException e)
@@ -165,6 +282,11 @@ public class ChatTranslationService
 			System.err.println("[Offline Translate] Translation failed for message from " + sender + ":");
 			e.printStackTrace();
 		}
+	}
+
+	private void warn(String message)
+	{
+		clientThread.invoke(() -> client.addChatMessage(ChatMessageType.CONSOLE, "", "[Offline Translate] " + message, null));
 	}
 
 	private void flagMessage(String sender, MessageNode messageNode, Language detected)
